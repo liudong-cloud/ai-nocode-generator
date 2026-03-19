@@ -1,18 +1,23 @@
 spring:
   application:
     name: ai-nocode-generator-backend
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://127.0.0.1:3306/ai_nocode_generator?useUnicode=true&characterEncoding=utf8&serverTimezone=GMT%2B8
+    username: root
+    password: root
 server:
   port: 8123
   servlet:
     context-path: /api
 
-# springdoc-openapi????
+# springdoc-openapi
 springdoc:
   group-configs:
     - group: 'default'
       paths-to-match: '/**'
       packages-to-scan: com.liud.ainocodegenerator.controller
-# knife4j???????????????
+# knife4j
 knife4j:
   enable: true
   setting:
