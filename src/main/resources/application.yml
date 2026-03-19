@@ -6,10 +6,37 @@ spring:
     url: jdbc:mysql://127.0.0.1:3306/ai_nocode_generator?useUnicode=true&characterEncoding=utf8&serverTimezone=GMT%2B8
     username: root
     password: root
+  # Redis 配置
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+      password:
+      database: 0
+      timeout: 5000ms
+      jedis:
+        pool:
+          max-active: 8
+          max-wait: -1ms
+          max-idle: 8
+          min-idle: 0
+  # Session 配置
+  session:
+    store-type: redis
+    timeout: 30m
+    redis:
+      namespace: ai:nocode:session
 server:
   port: 8123
   servlet:
     context-path: /api
+    session:
+      cookie:
+        name: SESSIONID
+        http-only: true
+        secure: false
+        same-site: lax
+        max-age: 1800
 
 # springdoc-openapi
 springdoc:

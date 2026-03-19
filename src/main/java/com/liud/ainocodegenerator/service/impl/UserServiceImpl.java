@@ -151,8 +151,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>  implements U
         if (userObj == null) {
             throw new BusinessException(ErrorCode.OPERATION_ERROR, "用户未登录");
         }
-        // 移除登录态
-        request.getSession().removeAttribute(USER_LOGIN_STATE);
+        // 使 Session 失效，会从 Redis 中删除
+        request.getSession().invalidate();
         return true;
     }
 
