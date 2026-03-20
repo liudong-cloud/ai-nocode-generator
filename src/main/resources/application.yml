@@ -26,6 +26,8 @@ spring:
     timeout: 30m
     redis:
       namespace: ai:nocode:session
+  profiles:
+    active: local
 server:
   port: 8123
   servlet:
