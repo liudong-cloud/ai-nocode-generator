@@ -26,8 +26,6 @@ spring:
     timeout: 30m
     redis:
       namespace: ai:nocode:session
-  profiles:
-    active: local
 server:
   port: 8123
   servlet:
@@ -51,3 +49,23 @@ knife4j:
   enable: true
   setting:
     language: zh_cn
+# AI
+langchain4j:
+  open-ai:
+    streaming-chat-model:
+      base-url: https://api.deepseek.com
+      api-key: sk-6351e168f77c4312b6ddf96868161a5d
+      model-name: deepseek-chat
+      log-requests: true
+      log-responses: true
+      max-tokens: 8192
+    chat-model:
+      base-url: https://api.deepseek.com
+      api-key: sk-6351e168f77c4312b6ddf96868161a5d
+      model-name: deepseek-chat
+      log-requests: true
+      log-responses: true
+      max-tokens: 8192
+      response-format: json_object
+      strict-json-schema: true
+
