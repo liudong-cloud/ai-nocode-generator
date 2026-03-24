@@ -10,6 +10,7 @@ import com.liud.ainocodegenerator.model.enums.CodeGenTypeEnum;
 import java.io.File;
 import java.nio.charset.Charset;
 
+@Deprecated
 public class CodeFileSaver {
 
     private static final String FILE_STORAGE_PATH = System.getProperty("user.dir") + "/tmp/code_output";
