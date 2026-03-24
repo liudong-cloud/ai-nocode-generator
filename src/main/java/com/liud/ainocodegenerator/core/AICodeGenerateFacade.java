@@ -3,6 +3,8 @@ package com.liud.ainocodegenerator.core;
 import com.liud.ainocodegenerator.ai.AINoCodeGeneratorService;
 import com.liud.ainocodegenerator.ai.model.HtmlCodeResult;
 import com.liud.ainocodegenerator.ai.model.MultiFileCodeResult;
+import com.liud.ainocodegenerator.core.parser.CodeParserExecutor;
+import com.liud.ainocodegenerator.core.saver.CodeFileSaverExecutor;
 import com.liud.ainocodegenerator.exception.BusinessException;
 import com.liud.ainocodegenerator.exception.ErrorCode;
 import com.liud.ainocodegenerator.model.enums.CodeGenTypeEnum;
@@ -31,8 +33,14 @@ public class AICodeGenerateFacade {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "codeGenTypeEnum is null");
         }
         return switch (codeGenTypeEnum) {
-            case HTML -> generateHtmlAICodeAndSave(userMessage);
-            case MULTI_FILE -> generateMultiFileAICodeAndSave(userMessage);
+            case HTML -> {
+                HtmlCodeResult htmlCodeResult = aiNoCodeGeneratorService.generateHtmlCode(userMessage);
+                yield CodeFileSaverExecutor.saveCodeFile(htmlCodeResult, codeGenTypeEnum);
+            }
+            case MULTI_FILE -> {
+                MultiFileCodeResult multiFileCodeResult = aiNoCodeGeneratorService.generateMultiFileCode(userMessage);
+                yield CodeFileSaverExecutor.saveCodeFile(multiFileCodeResult, codeGenTypeEnum);
+            }
             default -> throw new BusinessException(ErrorCode.PARAMS_ERROR, "codeGenTypeEnum is invalid");
         };
     }
@@ -49,52 +57,25 @@ public class AICodeGenerateFacade {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "codeGenTypeEnum is null");
         }
         return switch (codeGenTypeEnum) {
-            case HTML -> generateHtmlAICodeAndSaveStream(userMessage);
-            case MULTI_FILE -> generateMultiFileAICodeAndSaveStream(userMessage);
+            case HTML -> processCodeStream(userMessage, codeGenTypeEnum.HTML);
+            case MULTI_FILE -> processCodeStream(userMessage, codeGenTypeEnum.MULTI_FILE);
             default -> throw new BusinessException(ErrorCode.PARAMS_ERROR, "codeGenTypeEnum is invalid");
         };
     }
 
-    private Flux<String> generateMultiFileAICodeAndSaveStream(String userMessage) {
+    private Flux<String> processCodeStream(String userMessage, CodeGenTypeEnum codeGenTypeEnum) {
         Flux<String> flux = aiNoCodeGeneratorService.generateMultiFileCodeStream(userMessage);
         StringBuilder stringBuilder = new StringBuilder();
         return flux.doOnNext(stringBuilder::append)
                 .doOnComplete(() -> {
                     try {
                         String all = stringBuilder.toString();
-                        MultiFileCodeResult multiFileCodeResult = CodeParser.parseMultiFileCode(all);
-                        File saveMultiFileCode = CodeFileSaver.saveMultiFileCode(multiFileCodeResult);
-                        log.info("保存成功，路径为: {}", saveMultiFileCode.getAbsolutePath());
+                        Object codeParser = CodeParserExecutor.codeParser(all, codeGenTypeEnum);
+                        File saveFile = CodeFileSaverExecutor.saveCodeFile(codeParser, codeGenTypeEnum);
+                        log.info("保存成功，路径为: {}", saveFile.getAbsolutePath());
                     } catch (Exception e) {
                         log.error("保存失败", e);
                     }
                 });
-    }
-
-    private Flux<String> generateHtmlAICodeAndSaveStream(String userMessage) {
-        Flux<String> flux = aiNoCodeGeneratorService.generateHtmlCodeStream(userMessage);
-        StringBuilder stringBuilder = new StringBuilder();
-        return flux.doOnNext(stringBuilder::append)
-                .doOnComplete(() -> {
-                    try {
-                        String all = stringBuilder.toString();
-                        HtmlCodeResult htmlCodeResult = CodeParser.parseHtmlCode(all);
-                        File htmlCodeFile = CodeFileSaver.saveHtmlCode(htmlCodeResult);
-                        log.info("保存成功，路径为: {}", htmlCodeFile.getAbsolutePath());
-                    } catch (Exception e) {
-                        log.error("保存失败", e);
-                    }
-                });
-
-    }
-
-    private File generateMultiFileAICodeAndSave(String userMessage) {
-        MultiFileCodeResult multiFileCodeResult = aiNoCodeGeneratorService.generateMultiFileCode(userMessage);
-        return CodeFileSaver.saveMultiFileCode(multiFileCodeResult);
-    }
-
-    private File generateHtmlAICodeAndSave(String userMessage) {
-        HtmlCodeResult htmlCodeResult = aiNoCodeGeneratorService.generateHtmlCode(userMessage);
-        return CodeFileSaver.saveHtmlCode(htmlCodeResult);
     }
 }
