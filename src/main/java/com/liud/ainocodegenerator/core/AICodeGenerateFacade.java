@@ -57,8 +57,8 @@ public class AICodeGenerateFacade {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "codeGenTypeEnum is null");
         }
         return switch (codeGenTypeEnum) {
-            case HTML -> processCodeStream(userMessage, codeGenTypeEnum.HTML);
-            case MULTI_FILE -> processCodeStream(userMessage, codeGenTypeEnum.MULTI_FILE);
+            case HTML -> processCodeStream(userMessage, CodeGenTypeEnum.HTML);
+            case MULTI_FILE -> processCodeStream(userMessage, CodeGenTypeEnum.MULTI_FILE);
             default -> throw new BusinessException(ErrorCode.PARAMS_ERROR, "codeGenTypeEnum is invalid");
         };
     }
