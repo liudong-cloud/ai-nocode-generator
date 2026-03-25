@@ -3,12 +3,15 @@ package com.liud.ainocodegenerator.service.impl;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
+import com.liud.ainocodegenerator.core.AICodeGenerateFacade;
 import com.liud.ainocodegenerator.exception.BusinessException;
 import com.liud.ainocodegenerator.exception.ErrorCode;
+import com.liud.ainocodegenerator.exception.ThrowUtils;
 import com.liud.ainocodegenerator.mapper.AppMapper;
 import com.liud.ainocodegenerator.model.dto.app.AppQueryRequest;
 import com.liud.ainocodegenerator.model.entity.App;
 import com.liud.ainocodegenerator.model.entity.User;
+import com.liud.ainocodegenerator.model.enums.CodeGenTypeEnum;
 import com.liud.ainocodegenerator.model.vo.AppVO;
 import com.liud.ainocodegenerator.model.vo.UserVO;
 import com.liud.ainocodegenerator.service.AppService;
@@ -17,6 +20,7 @@ import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -37,6 +41,24 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     @Resource
     private UserService userService;
+
+    @Resource
+    private AICodeGenerateFacade aiCodeGenerateFacade;
+
+    @Override
+    public Flux<String> chatToGenCode(Long appId, String prompt, User loginUser) {
+        // 1.校验appId是否存在
+        ThrowUtils.throwIf(appId == null, ErrorCode.PARAMS_ERROR, "appId is null");
+        ThrowUtils.throwIf(loginUser == null, ErrorCode.PARAMS_ERROR, "loginUser is null");
+        // 2.查询应用信息，获取类型
+        App app = appMapper.selectOneById(appId);
+        String codeGenType = app.getCodeGenType();
+        // 3.校验用户是否有权限访问
+        Long userId = app.getUserId();
+        ThrowUtils.throwIf(!userId.equals(loginUser.getId()), ErrorCode.NO_AUTH_ERROR, "无权限访问");
+        // 4.调用门面方法生成代码（流式）
+        return aiCodeGenerateFacade.generateAICodeAndSaveStream(prompt, CodeGenTypeEnum.getEnumByValue(codeGenType), appId);
+    }
 
     @Override
     public AppVO getAppVO(App app) {

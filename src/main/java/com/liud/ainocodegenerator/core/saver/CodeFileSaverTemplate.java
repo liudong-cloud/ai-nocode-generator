@@ -16,14 +16,14 @@ public abstract class CodeFileSaverTemplate<T> {
     private static final String FILE_STORAGE_PATH = System.getProperty("user.dir") + "/tmp/code_output";
 
 
-    public File saveCodeFile(T codeResult, CodeGenTypeEnum codeGenTypeEnum){
+    public File saveCodeFile(T codeResult, CodeGenTypeEnum codeGenTypeEnum, Long appid){
         // 校验
         checkParam(codeResult, codeGenTypeEnum);
         // 保存文件
-        return saveFileCode(codeResult);
+        return saveFileCode(codeResult, appid);
     }
 
-    protected abstract File saveFileCode(T codeResult);
+    protected abstract File saveFileCode(T codeResult, Long appid);
 
     protected void checkParam(Object codeResult, CodeGenTypeEnum codeGenTypeEnum) {
         if (codeResult == null) {
@@ -32,8 +32,8 @@ public abstract class CodeFileSaverTemplate<T> {
     }
 
     // 构建唯一路径
-    protected String generateStoragePath() {
-        String uniquePath = StrUtil.format("{}_{}", getBzyType(), IdUtil.getSnowflakeNextIdStr());
+    protected String generateStoragePath(Long appid) {
+        String uniquePath = StrUtil.format("{}_{}", getBzyType(), appid);
         String dirPath = FILE_STORAGE_PATH + File.separator + uniquePath;
         FileUtil.mkdir(dirPath);
         return dirPath;

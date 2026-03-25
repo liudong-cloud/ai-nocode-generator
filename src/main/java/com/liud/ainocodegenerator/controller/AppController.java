@@ -1,6 +1,7 @@
 package com.liud.ainocodegenerator.controller;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.map.MapUtil;
 import cn.hutool.core.util.StrUtil;
 import com.liud.ainocodegenerator.annotation.AuthCheck;
 import com.liud.ainocodegenerator.common.BaseResponse;
@@ -21,11 +22,17 @@ import com.liud.ainocodegenerator.model.vo.AppVO;
 import com.liud.ainocodegenerator.service.AppService;
 import com.liud.ainocodegenerator.service.UserService;
 import com.mybatisflex.core.paginate.Page;
+import dev.langchain4j.internal.Json;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
+import org.apache.ibatis.annotations.Param;
+import org.springframework.http.MediaType;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.*;
+import reactor.core.publisher.Flux;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 
 /**
  *  控制层。
@@ -41,6 +48,27 @@ public class AppController {
 
     @Resource
     private UserService userService;
+
+    /**
+     * 对话生成代码
+     *
+     * @param appId 应用 id
+     * @param prompt 输入的提示
+     * @param httpServletRequest HTTP 请求
+     * @return 给到前端的信息
+     */
+    @GetMapping(value = "/chat/gen/code", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<ServerSentEvent<String>> chatToGenCode(@Param("appId") Long appId, @Param("prompt") String prompt, HttpServletRequest httpServletRequest) {
+        // 校验参数
+        ThrowUtils.throwIf(appId == null || appId < 0, ErrorCode.PARAMS_ERROR, "appId参数有误");
+        ThrowUtils.throwIf(StrUtil.isBlank(prompt), ErrorCode.PARAMS_ERROR, "输入的提示参数不能为空");
+
+        User loginUser = userService.getLoginUser(httpServletRequest);
+        return appService.chatToGenCode(appId, prompt, loginUser).map(content -> {
+            HashMap<String, String> d = MapUtil.of("d", content);
+            return ServerSentEvent.builder(Json.toJson(d)).build();
+        }).concatWith(Flux.just(ServerSentEvent.<String>builder().event("end").data("").build()));
+    }
 
     /**
      * 创建应用（用户）
@@ -61,6 +89,7 @@ public class AppController {
         User loginUser = userService.getLoginUser(request);
         App app = new App();
         app.setUserId(loginUser.getId());
+        app.setInitPrompt(initPrompt);
         // 应用名称暂为initPrompt截取前12个字符
         app.setAppName(initPrompt.substring(0, Math.min(initPrompt.length(), 12)));
         // 暂时定位MultiFile

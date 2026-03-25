@@ -2,19 +2,30 @@ package com.liud.ainocodegenerator.service;
 
 import com.liud.ainocodegenerator.model.dto.app.AppQueryRequest;
 import com.liud.ainocodegenerator.model.entity.App;
+import com.liud.ainocodegenerator.model.entity.User;
 import com.liud.ainocodegenerator.model.vo.AppVO;
-import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.core.service.IService;
+import reactor.core.publisher.Flux;
 
 import java.util.List;
 
 /**
- *  服务层。
+ * 服务层。
  *
  * @author liud
  */
 public interface AppService extends IService<App> {
+
+    /**
+     * 聊天生成代码
+     *
+     * @param appId
+     * @param prompt
+     * @param loginUser
+     * @return
+     */
+    Flux<String> chatToGenCode(Long appId, String prompt, User loginUser);
 
     /**
      * 获取应用视图对象

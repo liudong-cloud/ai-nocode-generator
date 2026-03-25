@@ -19,13 +19,13 @@ class AICodeGenerateFacadeTest {
 
     @Test
     void generateAICodeAndSave() {
-        File file = aiCodeGenerateFacade.generateAICodeAndSave("生成一个登录页面，要求20行", CodeGenTypeEnum.MULTI_FILE);
+        File file = aiCodeGenerateFacade.generateAICodeAndSave("生成一个登录页面，要求20行", CodeGenTypeEnum.MULTI_FILE, 12123L);
         Assertions.assertNotNull(file);
     }
 
     @Test
     void generateAICodeAndSaveStream() {
-        Flux<String> flux = aiCodeGenerateFacade.generateAICodeAndSaveStream("生成一个登录页面，要求20行", CodeGenTypeEnum.MULTI_FILE);
+        Flux<String> flux = aiCodeGenerateFacade.generateAICodeAndSaveStream("生成一个登录页面，要求20行", CodeGenTypeEnum.MULTI_FILE, 3123123L);
         Long block = flux.count().block();
 
     }
