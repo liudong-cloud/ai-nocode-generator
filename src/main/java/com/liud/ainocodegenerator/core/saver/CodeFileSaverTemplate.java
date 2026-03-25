@@ -10,10 +10,12 @@ import com.liud.ainocodegenerator.model.enums.CodeGenTypeEnum;
 import java.io.File;
 import java.nio.charset.Charset;
 
+import static com.liud.ainocodegenerator.constant.AppConstant.CODE_OUTPUT_ROOT_DIR;
+
 public abstract class CodeFileSaverTemplate<T> {
 
 
-    private static final String FILE_STORAGE_PATH = System.getProperty("user.dir") + "/tmp/code_output";
+    private static final String FILE_STORAGE_PATH = CODE_OUTPUT_ROOT_DIR;
 
 
     public File saveCodeFile(T codeResult, CodeGenTypeEnum codeGenTypeEnum, Long appid){
