@@ -13,6 +13,7 @@ import com.liud.ainocodegenerator.exception.BusinessException;
 import com.liud.ainocodegenerator.exception.ErrorCode;
 import com.liud.ainocodegenerator.exception.ThrowUtils;
 import com.liud.ainocodegenerator.model.dto.app.AppAddRequest;
+import com.liud.ainocodegenerator.model.dto.app.AppDeployRequest;
 import com.liud.ainocodegenerator.model.dto.app.AppQueryRequest;
 import com.liud.ainocodegenerator.model.dto.app.AppUpdateRequest;
 import com.liud.ainocodegenerator.model.entity.App;
@@ -48,6 +49,18 @@ public class AppController {
 
     @Resource
     private UserService userService;
+
+    @PostMapping("/deploy")
+    public BaseResponse<String> deploy(@RequestBody AppDeployRequest appDeployRequest, HttpServletRequest httpServletRequest){
+        // 校验参数
+        ThrowUtils.throwIf(appDeployRequest == null || appDeployRequest.getAppId() == null, ErrorCode.PARAMS_ERROR);
+        // 获取用户
+        User loginUser = userService.getLoginUser(httpServletRequest);
+        // 部署
+        String deploy = appService.deploy(appDeployRequest.getAppId(), loginUser);
+        return ResultUtils.success(deploy);
+
+    }
 
     /**
      * 对话生成代码

@@ -2,6 +2,9 @@ package com.liud.ainocodegenerator.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.io.FileUtil;
+import cn.hutool.core.io.IORuntimeException;
+import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
 import com.liud.ainocodegenerator.core.AICodeGenerateFacade;
 import com.liud.ainocodegenerator.exception.BusinessException;
@@ -20,13 +23,17 @@ import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.io.File;
+import java.time.LocalDateTime;
+import java.util.*;
+import java.util.random.RandomGenerator;
 import java.util.stream.Collectors;
+
+import static com.liud.ainocodegenerator.constant.AppConstant.CODE_DEPLOY_ROOT_DIR;
+import static com.liud.ainocodegenerator.constant.AppConstant.CODE_OUTPUT_ROOT_DIR;
 
 /**
  *  服务层实现。
@@ -44,6 +51,46 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     @Resource
     private AICodeGenerateFacade aiCodeGenerateFacade;
+
+    @Override
+    public String deploy(Long appId, User user) {
+        // 参数校验
+        ThrowUtils.throwIf(appId == null, ErrorCode.PARAMS_ERROR, "appId is null");
+        ThrowUtils.throwIf(user == null, ErrorCode.PARAMS_ERROR, "user is null");
+        // 判断app是否存在
+        App app = appMapper.selectOneById(appId);
+        // 判断用户是否有权限
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "app not found");
+        ThrowUtils.throwIf(!app.getUserId().equals(user.getId()), ErrorCode.NO_AUTH_ERROR, "无权限访问");
+        // 判断deployKey是否存在，不存在则生成
+        String deployKey = app.getDeployKey();
+        if (StrUtil.isBlank(deployKey)) {
+            deployKey = RandomUtil.randomString(6); // 生成deployKey
+        }
+        // 构建源文件目录，获取源文件
+        String codeGenType = app.getCodeGenType();
+        String filePath = StrUtil.format("{}_{}", codeGenType, appId);
+        String sourceFilePath = CODE_OUTPUT_ROOT_DIR + File.separator +  filePath;
+        File file = new File(sourceFilePath);
+        if (!file.exists()) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "源文件不存在");
+        }
+        // 构建部署目录，复制源文件
+        String deployDir = CODE_DEPLOY_ROOT_DIR + File.separator + deployKey;
+        try {
+            File depFile = FileUtil.copyContent(file, new File(deployDir), true);
+        } catch (IORuntimeException e) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "部署失败");
+        }
+        // 修改app信息，部署信息
+        App depApp = new App();
+        depApp.setId(appId);
+        depApp.setDeployKey(deployKey);
+        depApp.setDeployedTime(LocalDateTime.now());
+        boolean updateRes = this.updateById(depApp);
+        ThrowUtils.throwIf(!updateRes, ErrorCode.SYSTEM_ERROR, "部署失败");
+        return StrUtil.format("{}/{}", CODE_DEPLOY_ROOT_DIR, deployKey);
+    }
 
     @Override
     public Flux<String> chatToGenCode(Long appId, String prompt, User loginUser) {
