@@ -28,18 +28,18 @@ public class AICodeGenerateFacade {
      * @param codeGenTypeEnum
      * @return
      */
-    public File generateAICodeAndSave(String userMessage, CodeGenTypeEnum codeGenTypeEnum) {
+    public File generateAICodeAndSave(String userMessage, CodeGenTypeEnum codeGenTypeEnum, Long appid) {
         if (codeGenTypeEnum == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "codeGenTypeEnum is null");
         }
         return switch (codeGenTypeEnum) {
             case HTML -> {
                 HtmlCodeResult htmlCodeResult = aiNoCodeGeneratorService.generateHtmlCode(userMessage);
-                yield CodeFileSaverExecutor.saveCodeFile(htmlCodeResult, codeGenTypeEnum);
+                yield CodeFileSaverExecutor.saveCodeFile(htmlCodeResult, codeGenTypeEnum, appid);
             }
             case MULTI_FILE -> {
                 MultiFileCodeResult multiFileCodeResult = aiNoCodeGeneratorService.generateMultiFileCode(userMessage);
-                yield CodeFileSaverExecutor.saveCodeFile(multiFileCodeResult, codeGenTypeEnum);
+                yield CodeFileSaverExecutor.saveCodeFile(multiFileCodeResult, codeGenTypeEnum, appid);
             }
             default -> throw new BusinessException(ErrorCode.PARAMS_ERROR, "codeGenTypeEnum is invalid");
         };
@@ -52,18 +52,18 @@ public class AICodeGenerateFacade {
      * @param codeGenTypeEnum
      * @return
      */
-    public Flux<String> generateAICodeAndSaveStream(String userMessage, CodeGenTypeEnum codeGenTypeEnum) {
+    public Flux<String> generateAICodeAndSaveStream(String userMessage, CodeGenTypeEnum codeGenTypeEnum, Long appid) {
         if (codeGenTypeEnum == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "codeGenTypeEnum is null");
         }
         return switch (codeGenTypeEnum) {
-            case HTML -> processCodeStream(userMessage, CodeGenTypeEnum.HTML);
-            case MULTI_FILE -> processCodeStream(userMessage, CodeGenTypeEnum.MULTI_FILE);
+            case HTML -> processCodeStream(userMessage, CodeGenTypeEnum.HTML, appid);
+            case MULTI_FILE -> processCodeStream(userMessage, CodeGenTypeEnum.MULTI_FILE, appid);
             default -> throw new BusinessException(ErrorCode.PARAMS_ERROR, "codeGenTypeEnum is invalid");
         };
     }
 
-    private Flux<String> processCodeStream(String userMessage, CodeGenTypeEnum codeGenTypeEnum) {
+    private Flux<String> processCodeStream(String userMessage, CodeGenTypeEnum codeGenTypeEnum, Long appid) {
         Flux<String> flux = aiNoCodeGeneratorService.generateMultiFileCodeStream(userMessage);
         StringBuilder stringBuilder = new StringBuilder();
         return flux.doOnNext(stringBuilder::append)
@@ -71,7 +71,7 @@ public class AICodeGenerateFacade {
                     try {
                         String all = stringBuilder.toString();
                         Object codeParser = CodeParserExecutor.codeParser(all, codeGenTypeEnum);
-                        File saveFile = CodeFileSaverExecutor.saveCodeFile(codeParser, codeGenTypeEnum);
+                        File saveFile = CodeFileSaverExecutor.saveCodeFile(codeParser, codeGenTypeEnum, appid);
                         log.info("保存成功，路径为: {}", saveFile.getAbsolutePath());
                     } catch (Exception e) {
                         log.error("保存失败", e);

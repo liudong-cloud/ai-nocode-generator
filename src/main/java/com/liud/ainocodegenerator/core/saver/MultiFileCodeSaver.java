@@ -8,11 +8,11 @@ import java.io.File;
 public class MultiFileCodeSaver extends CodeFileSaverTemplate<MultiFileCodeResult> {
 
     @Override
-    protected File saveFileCode(MultiFileCodeResult multiFileCodeResult) {
-        String dirPath = generateStoragePath();
+    protected File saveFileCode(MultiFileCodeResult multiFileCodeResult, Long appid) {
+        String dirPath = generateStoragePath(appid);
         saveFile(dirPath, "index.html", multiFileCodeResult.getHtmlCode());
-        saveFile(dirPath, "index.css", multiFileCodeResult.getCssCode());
-        saveFile(dirPath, "index.js", multiFileCodeResult.getJsCode());
+        saveFile(dirPath, "style.css", multiFileCodeResult.getCssCode());
+        saveFile(dirPath, "script.js", multiFileCodeResult.getJsCode());
         return new File(dirPath);
     }
 

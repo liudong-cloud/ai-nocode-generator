@@ -8,8 +8,8 @@ import java.io.File;
 public class HtmlCodeSaver extends CodeFileSaverTemplate<HtmlCodeResult> {
 
     @Override
-    protected File saveFileCode(HtmlCodeResult htmlCodeResult) {
-        String dirPath = generateStoragePath();
+    protected File saveFileCode(HtmlCodeResult htmlCodeResult, Long appid) {
+        String dirPath = generateStoragePath(appid);
         saveFile(dirPath, "index.html", htmlCodeResult.getHtmlCode());
         return new File(dirPath);
     }
