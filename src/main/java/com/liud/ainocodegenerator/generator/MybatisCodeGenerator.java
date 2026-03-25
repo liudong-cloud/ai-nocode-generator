@@ -11,7 +11,7 @@ import java.util.Map;
 
 public class MybatisCodeGenerator {
 
-    static String[] TABLE_NAMES = {"user"};
+    static String[] TABLE_NAMES = {"app"};
 
     public static void main(String[] args) {
         // 获取数据库信息
@@ -43,7 +43,7 @@ public class MybatisCodeGenerator {
 
         //设置根包
         globalConfig.getPackageConfig()
-                .setBasePackage("com.liud.ailiud.ainocodegenerator.genresult");
+                .setBasePackage("com.liud.ainocodegenerator.generesult");
 
         //设置表前缀和只生成哪些表，setGenerateTable 未配置时，生成所有表
         globalConfig.getStrategyConfig()
