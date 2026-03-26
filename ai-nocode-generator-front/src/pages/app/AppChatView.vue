@@ -155,6 +155,7 @@ import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github.css' // Github style for code block
 import { getAppVoById, deploy } from '@/api/appController'
+import CONFIG from '@/config'
 
 const router = useRouter()
 const route = useRoute()
@@ -184,7 +185,7 @@ const loadAppInfo = async () => {
       appInfo.value = res.data.data
       // 如果有 deployKey，构建预览 URL
       if (res.data.data.codeGenType && res.data.data.id) {
-        previewUrl.value = `http://localhost:8123/api/static/${res.data.data.codeGenType}_${res.data.data.id}/`
+        previewUrl.value = `${CONFIG.baseURL}/static/${res.data.data.codeGenType}_${res.data.data.id}/`
       }
     }
   } catch (e) {
@@ -240,7 +241,7 @@ const sendChatMessage = async (prompt: string) => {
   isGenerating.value = false
 
   try {
-    const url = `http://localhost:8123/api/app/chat/gen/code?appId=${appId}&prompt=${encodeURIComponent(prompt)}`
+    const url = `${CONFIG.baseURL}/app/chat/gen/code?appId=${appId}&prompt=${encodeURIComponent(prompt)}`
     const eventSource = new EventSource(url, { withCredentials: true })
 
     eventSource.onmessage = (event) => {
@@ -265,7 +266,7 @@ const sendChatMessage = async (prompt: string) => {
       await loadAppInfo()
       // 生成完成后展示预览
       if (appInfo.value?.codeGenType && appInfo.value?.id) {
-        previewUrl.value = `http://localhost:8123/api/static/${appInfo.value.codeGenType}_${appInfo.value.id}/`
+        previewUrl.value = `${CONFIG.baseURL}/static/${appInfo.value.codeGenType}_${appInfo.value.id}/`
       }
     }
   } catch (e) {
