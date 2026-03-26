@@ -5,12 +5,14 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import BasicLayout from '@/layouts/BasicLayout.vue'
+import { useUserStore } from '@/stores/user'
 
-import { healthCheck } from '@/api/healthController.ts'
+const userStore = useUserStore()
 
-healthCheck().then((res) => {
-  console.log(res)
+onMounted(() => {
+  userStore.fetchLoginUser()
 })
 </script>
 

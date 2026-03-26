@@ -22,6 +22,7 @@ import com.liud.ainocodegenerator.service.UserService;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
 import jakarta.annotation.Resource;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
@@ -51,6 +52,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     @Resource
     private AICodeGenerateFacade aiCodeGenerateFacade;
+
+    @Value("${code.deploy-host:http://localhost:9000}")
+    private String deployHost;
 
     @Override
     public String deploy(Long appId, User user) {
@@ -89,7 +93,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         depApp.setDeployedTime(LocalDateTime.now());
         boolean updateRes = this.updateById(depApp);
         ThrowUtils.throwIf(!updateRes, ErrorCode.SYSTEM_ERROR, "部署失败");
-        return StrUtil.format("{}/{}", CODE_DEPLOY_ROOT_DIR, deployKey);
+        return StrUtil.format("{}/{}/", deployHost, deployKey);
     }
 
     @Override
