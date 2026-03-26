@@ -10,6 +10,6 @@
 .global-footer {
   text-align: center;
   padding: 16px;
-  background: #efefef;
+  /* background: #efefef; */
 }
 </style>

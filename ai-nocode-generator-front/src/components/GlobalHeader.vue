@@ -4,7 +4,7 @@
       <a-col flex="200px">
         <div class="title-bar">
           <img class="logo" src="../assets/logo.png" alt="logo" />
-          <div class="title">AI 答题应用平台</div>
+          <div class="title">AI应用生成平台</div>
         </div>
       </a-col>
       <a-col flex="auto">
