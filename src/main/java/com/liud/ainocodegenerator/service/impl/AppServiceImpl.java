@@ -14,20 +14,25 @@ import com.liud.ainocodegenerator.mapper.AppMapper;
 import com.liud.ainocodegenerator.model.dto.app.AppQueryRequest;
 import com.liud.ainocodegenerator.model.entity.App;
 import com.liud.ainocodegenerator.model.entity.User;
+import com.liud.ainocodegenerator.model.enums.ChatHistoryMessageTypeEnum;
 import com.liud.ainocodegenerator.model.enums.CodeGenTypeEnum;
 import com.liud.ainocodegenerator.model.vo.AppVO;
 import com.liud.ainocodegenerator.model.vo.UserVO;
 import com.liud.ainocodegenerator.service.AppService;
+import com.liud.ainocodegenerator.service.ChatHistoryService;
 import com.liud.ainocodegenerator.service.UserService;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
 
 import java.io.File;
+import java.io.Serializable;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.random.RandomGenerator;
@@ -42,6 +47,7 @@ import static com.liud.ainocodegenerator.constant.AppConstant.CODE_OUTPUT_ROOT_D
  * @author liud
  */
 @Service
+@Slf4j
 public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppService {
 
     @Resource
@@ -49,6 +55,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     @Resource
     private UserService userService;
+
+    @Resource
+    private ChatHistoryService chatHistoryService;
 
     @Resource
     private AICodeGenerateFacade aiCodeGenerateFacade;
@@ -107,8 +116,22 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         // 3.校验用户是否有权限访问
         Long userId = app.getUserId();
         ThrowUtils.throwIf(!userId.equals(loginUser.getId()), ErrorCode.NO_AUTH_ERROR, "无权限访问");
-        // 4.调用门面方法生成代码（流式）
-        return aiCodeGenerateFacade.generateAICodeAndSaveStream(prompt, CodeGenTypeEnum.getEnumByValue(codeGenType), appId);
+        // 4.保存uer消息
+        chatHistoryService.addChatMessage(appId, prompt, ChatHistoryMessageTypeEnum.USER.getValue(), userId);
+        // 5.调用门面方法生成代码（流式）
+        Flux<String> aiCodeRes = aiCodeGenerateFacade.generateAICodeAndSaveStream(prompt, CodeGenTypeEnum.getEnumByValue(codeGenType), appId);
+        // 6.保存AI消息
+        StringBuilder aiMessageBuilder = new StringBuilder();
+        return aiCodeRes.doOnNext(aiMessageBuilder::append)
+                .doOnComplete(() -> {
+                    String aiMessage = aiMessageBuilder.toString();
+                    chatHistoryService.addChatMessage(appId, aiMessage, ChatHistoryMessageTypeEnum.AI.getValue(), userId);
+                })
+                .doOnError(e -> {
+                    log.error("保存AI生成代码异常", e);
+                    chatHistoryService.addChatMessage(appId, e.getMessage(), ChatHistoryMessageTypeEnum.AI.getValue(), userId);
+                });
+
     }
 
     @Override
@@ -178,4 +201,13 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         return queryWrapper;
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean removeById(Serializable id) {
+        // 校验
+        ThrowUtils.throwIf(id == null, ErrorCode.PARAMS_ERROR, "请求参数为空");
+        // 删除app的历史消息
+        chatHistoryService.deleteByAppId((Long) id);
+        return super.removeById(id);
+    }
 }
