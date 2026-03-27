@@ -44,9 +44,16 @@
       <!-- 左侧对话区域 -->
       <div class="chat-left">
         <div class="messages-area" ref="messagesRef">
+          <!-- 加载更多 -->
+          <div v-if="hasMore" class="load-more-wrapper">
+            <a-button type="link" :loading="loadingHistory" @click="loadHistory(false)">
+              <template #icon v-if="!loadingHistory"><UpOutlined /></template>
+              加载更多历史消息
+            </a-button>
+          </div>
           <div
             v-for="(msg, index) in messages"
-            :key="index"
+            :key="msg.id || index"
             :class="['message-item', msg.role === 'user' ? 'message-user' : 'message-ai']"
           >
             <div class="message-avatar">
@@ -137,7 +144,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick, watch } from 'vue'
+import { ref, onMounted, nextTick, watch, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
 import {
@@ -150,11 +157,14 @@ import {
   DesktopOutlined,
   ExportOutlined,
   EditOutlined,
+  UpOutlined,
 } from '@ant-design/icons-vue'
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github.css' // Github style for code block
 import { getAppVoById, deploy } from '@/api/appController'
+import { listAppChatHistory } from '@/api/chatHistoryController'
+import { useUserStore } from '@/stores/user'
 import CONFIG from '@/config'
 
 const router = useRouter()
@@ -165,17 +175,42 @@ const appInfo = ref<API.AppVO>()
 const deploying = ref(false)
 const deployUrl = ref('')
 const previewUrl = ref('')
+const refreshKey = ref(Date.now())
 const userInput = ref('')
 const isStreaming = ref(false)
 const isGenerating = ref(false)
 const messagesRef = ref<HTMLElement>()
 
+const userStore = useUserStore()
+const loginUser = computed(() => userStore.loginUser)
+
 interface ChatMessage {
+  id?: number
   role: 'user' | 'ai'
   content: string
 }
 
 const messages = ref<ChatMessage[]>([])
+const lastCreateTime = ref<string | undefined>(undefined)
+const hasMore = ref(false)
+const loadingHistory = ref(false)
+
+// 统一更新预览 URL 的逻辑
+const updatePreviewUrl = () => {
+  // 核心逻辑：只要后端有了生成出的 codeGenType，就可以尝试展示预览
+  // 为了符合“对话触发”的语境，进入页面时至少需要 2 条记录（1次对话往返）
+  // 但如果是正在对话中或者刚生成出来的，也应该展示
+  if (appInfo.value?.codeGenType && appInfo.value?.id) {
+    if (messages.value.length >= 2 || isStreaming.value) {
+      const newUrl = `${CONFIG.baseURL}/static/${appInfo.value.codeGenType}_${appInfo.value.id}/?t=${refreshKey.value}`
+      if (previewUrl.value !== newUrl) {
+        previewUrl.value = newUrl
+      }
+      return
+    }
+  }
+  previewUrl.value = ''
+}
 
 // 加载应用信息
 const loadAppInfo = async () => {
@@ -183,10 +218,7 @@ const loadAppInfo = async () => {
     const res = await getAppVoById({ id: appId })
     if (res.data.code === 0 && res.data.data) {
       appInfo.value = res.data.data
-      // 如果有 deployKey，构建预览 URL
-      if (res.data.data.codeGenType && res.data.data.id) {
-        previewUrl.value = `${CONFIG.baseURL}/static/${res.data.data.codeGenType}_${res.data.data.id}/`
-      }
+      updatePreviewUrl()
     }
   } catch (e) {
     message.error('加载应用信息失败')
@@ -213,6 +245,45 @@ const md = new MarkdownIt({
 const renderMarkdown = (text: string) => {
   if (!text) return ''
   return md.render(text)
+}
+
+// 加载历史消息
+const loadHistory = async (firstLoad = false) => {
+  if (loadingHistory.value) return
+  loadingHistory.value = true
+  try {
+    const res = await listAppChatHistory({
+      appId: Number(appId),
+      pageSize: 10,
+      lastCreateTime: lastCreateTime.value,
+    })
+    if (res.data.code === 0 && res.data.data) {
+      const records = res.data.data.records || []
+      const newMessages: ChatMessage[] = records.map((item) => ({
+        id: item.id,
+        role: item.messageType as 'user' | 'ai',
+        content: item.message || '',
+      }))
+      
+      // 按照时间升序排列：历史记录返回一般是时间降序（游标往前查），所以这里要反转一下或者看后端返回顺序
+      // 获取后端的 lastCreateTime 作为游标
+      if (newMessages.length > 0) {
+        messages.value = [...newMessages.reverse(), ...messages.value]
+        lastCreateTime.value = records[records.length - 1].createTime
+      }
+      
+      hasMore.value = records.length >= 10
+      updatePreviewUrl()
+      
+      if (firstLoad) {
+        scrollToBottom()
+      }
+    }
+  } catch (e) {
+    message.error('加载历史记录失败')
+  } finally {
+    loadingHistory.value = false
+  }
 }
 
 // 滚动到底部
@@ -261,13 +332,15 @@ const sendChatMessage = async (prompt: string) => {
 
     eventSource.onerror = async () => {
       eventSource.close()
+      
+      // 添加延时，确保服务器端静态文件已经完整写入磁盘
+      await new Promise(resolve => setTimeout(resolve, 1500))
+      
       isStreaming.value = false
-      // 重新加载应用信息（获取最新的 codeGenType 等信息）
+      refreshKey.value = Date.now()
+      
+      // 重新加载应用信息, loadAppInfo 内部会调用 updatePreviewUrl
       await loadAppInfo()
-      // 生成完成后展示预览
-      if (appInfo.value?.codeGenType && appInfo.value?.id) {
-        previewUrl.value = `${CONFIG.baseURL}/static/${appInfo.value.codeGenType}_${appInfo.value.id}/`
-      }
     }
   } catch (e) {
     isStreaming.value = false
@@ -306,27 +379,26 @@ const handleDeploy = async () => {
 }
 
 onMounted(async () => {
-  await loadAppInfo()
+  await Promise.all([loadAppInfo(), loadHistory(true)])
+  
   // 判断是新建（带有 query param prompt）还是查看已有应用
   const initialPrompt = route.query.prompt as string
-  
-  // 只有当 messages 为空，且应用尚未生成过代码 (codeGenType 为空) 时，才自动触发生成
+  const isOwner = appInfo.value?.userId === loginUser.value.id
+
+  // 1. 如果有 URL query prompt (通常是刚从创建页跳转过来)
   if (initialPrompt && messages.value.length === 0 && !appInfo.value?.codeGenType) {
-    // 新建：自动发送提示词
     messages.value.push({ role: 'user', content: initialPrompt })
     scrollToBottom()
     await sendChatMessage(initialPrompt)
-    
-    // 生成开始后，尝试清理掉 URL 中的 prompt 参数，防止刷新重复触发
     router.replace({ query: { ...route.query, prompt: undefined } })
-  } else if (appInfo.value?.initPrompt && messages.value.length === 0) {
-    // 查看已有应用：仅展示对话历史（首条提示词及对应的AI结果预填充）
+  } else if (isOwner && messages.value.length === 0 && appInfo.value?.initPrompt) {
+    // 2. 如果是自己的 app，且没有对话历史，自动发送 initPrompt
     messages.value.push({ role: 'user', content: appInfo.value.initPrompt })
-    if (appInfo.value.codeGenType && appInfo.value.id) {
-      messages.value.push({ role: 'ai', content: '**网站代码已生成**，请在右侧页面查看实际效果。' })
-    }
     scrollToBottom()
+    await sendChatMessage(appInfo.value.initPrompt)
   }
+  
+  updatePreviewUrl()
 })
 </script>
 
@@ -399,6 +471,11 @@ onMounted(async () => {
   flex: 1;
   overflow-y: auto;
   padding: 20px;
+}
+
+.load-more-wrapper {
+  text-align: center;
+  margin-bottom: 20px;
 }
 
 .message-item {

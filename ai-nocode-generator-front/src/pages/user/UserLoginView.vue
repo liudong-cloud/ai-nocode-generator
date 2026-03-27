@@ -88,9 +88,8 @@ const handleLogin = async () => {
     if (res.data.code === 0 && res.data.data) {
       message.success('登录成功')
       userStore.setLoginUser(res.data.data)
-      // 跳转到 redirect 页面或主页
-      const redirect = (route.query.redirect as string) || '/'
-      router.push(redirect)
+      // 登录成功后始终跳转到主页
+      router.push('/')
     } else {
       message.error(res.data.message || '登录失败')
     }
