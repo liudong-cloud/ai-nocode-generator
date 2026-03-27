@@ -41,6 +41,11 @@ const router = createRouter({
       name: 'adminApp',
       component: () => import('@/pages/admin/AdminAppManageView.vue'),
     },
+    {
+      path: '/admin/chat',
+      name: 'adminChat',
+      component: () => import('@/pages/admin/AdminChatHistoryManageView.vue'),
+    },
   ],
 })
 

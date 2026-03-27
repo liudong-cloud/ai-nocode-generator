@@ -84,6 +84,11 @@ const menuItems = computed<MenuProps['items']>(() => {
       label: '应用管理',
       title: '应用管理',
     })
+    items!.push({
+      key: '/admin/chat',
+      label: '对话管理',
+      title: '对话管理',
+    })
   }
 
   return items
@@ -95,6 +100,8 @@ watchEffect(() => {
   const path = route.path
   if (path.startsWith('/admin/app')) {
     current.value = ['/admin/app']
+  } else if (path.startsWith('/admin/chat')) {
+    current.value = ['/admin/chat']
   } else if (path === '/') {
     current.value = ['/']
   } else {
