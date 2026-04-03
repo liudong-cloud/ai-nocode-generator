@@ -4,7 +4,8 @@ declare namespace API {
   }
 
   type AppDeployRequest = {
-    appId?: number
+    /** 雪花 ID，全程使用字符串避免 JS Number 精度丢失 */
+    appId?: string
   }
 
   type AppQueryRequest = {
@@ -12,25 +13,25 @@ declare namespace API {
     pageSize?: number
     sortField?: string
     sortOrder?: string
-    id?: number
+    id?: string
     appName?: string
     cover?: string
     initPrompt?: string
     codeGenType?: string
     deployKey?: string
     priority?: number
-    userId?: number
+    userId?: string
   }
 
   type AppUpdateRequest = {
-    id?: number
+    id?: string
     appName?: string
     cover?: string
     priority?: number
   }
 
   type AppVO = {
-    id?: number
+    id?: string
     appName?: string
     cover?: string
     initPrompt?: string
@@ -38,7 +39,7 @@ declare namespace API {
     deployKey?: string
     deployedTime?: string
     priority?: number
-    userId?: number
+    userId?: string
     createTime?: string
     updateTime?: string
     user?: UserVO
@@ -105,11 +106,11 @@ declare namespace API {
   }
 
   type ChatHistory = {
-    id?: number
+    id?: string
     message?: string
     messageType?: string
-    appId?: number
-    userId?: number
+    appId?: string
+    userId?: string
     createTime?: string
     updateTime?: string
     isDelete?: number
@@ -120,29 +121,29 @@ declare namespace API {
     pageSize?: number
     sortField?: string
     sortOrder?: string
-    id?: number
+    id?: string
     message?: string
     messageType?: string
-    appId?: number
-    userId?: number
+    appId?: string
+    userId?: string
     lastCreateTime?: string
   }
 
   type chatToGenCodeParams = {
-    appId: number
+    appId: string
     prompt: string
   }
 
   type DeleteRequest = {
-    id?: number
+    id?: string
   }
 
   type getAppByIdAdminParams = {
-    id: number
+    id: string
   }
 
   type getAppVOByIdParams = {
-    id: number
+    id: string
   }
 
   type getUserByIdParams = {
@@ -154,7 +155,7 @@ declare namespace API {
   }
 
   type listAppChatHistoryParams = {
-    appId: number
+    appId: string
     pageSize?: number
     lastCreateTime?: string
   }

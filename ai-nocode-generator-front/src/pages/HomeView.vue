@@ -64,7 +64,6 @@
             class="app-card"
             v-for="app in myApps"
             :key="app.id"
-            @click="goToChat(app)"
           >
             <div class="app-card-cover">
               <img
@@ -75,6 +74,14 @@
               />
               <div v-else class="cover-placeholder">
                 <AppstoreOutlined class="cover-icon" />
+              </div>
+              <div class="card-actions">
+                <a-button type="primary" size="small" @click.stop="goToChat(app, true)">
+                  查看
+                </a-button>
+                <a-button size="small" @click.stop="goToEdit(app)">
+                  编辑
+                </a-button>
               </div>
             </div>
             <div class="app-card-info">
@@ -117,7 +124,6 @@
             class="app-card"
             v-for="app in featuredApps"
             :key="app.id"
-            @click="goToChat(app)"
           >
             <div class="app-card-cover">
               <img
@@ -128,6 +134,14 @@
               />
               <div v-else class="cover-placeholder">
                 <AppstoreOutlined class="cover-icon" />
+              </div>
+              <div class="card-actions">
+                <a-button type="primary" size="small" @click.stop="goToChat(app, true)">
+                  查看
+                </a-button>
+                <a-button size="small" @click.stop="goToEdit(app)">
+                  编辑
+                </a-button>
               </div>
             </div>
             <div class="app-card-info">
@@ -262,8 +276,16 @@ const fetchFeaturedApps = async () => {
   }
 }
 
-const goToChat = (app: API.AppVO) => {
+const goToChat = (app: API.AppVO, viewOnly = false) => {
+  if (viewOnly) {
+    router.push({ path: `/app/chat/${app.id}`, query: { mode: 'view' } })
+    return
+  }
   router.push(`/app/chat/${app.id}`)
+}
+
+const goToEdit = (app: API.AppVO) => {
+  router.push(`/app/edit/${app.id}`)
 }
 
 const formatDate = (dateStr?: string) => {
@@ -425,6 +447,7 @@ onMounted(() => {
 }
 
 .app-card-cover {
+  position: relative;
   width: 100%;
   height: 160px;
   overflow: hidden;
@@ -448,6 +471,22 @@ onMounted(() => {
 .cover-icon {
   font-size: 48px;
   color: #bbb;
+}
+
+.card-actions {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.app-card:hover .card-actions {
+  opacity: 1;
 }
 
 .app-card-info {
