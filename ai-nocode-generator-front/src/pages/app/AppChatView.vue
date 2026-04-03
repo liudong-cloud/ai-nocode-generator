@@ -185,7 +185,7 @@ const userStore = useUserStore()
 const loginUser = computed(() => userStore.loginUser)
 
 interface ChatMessage {
-  id?: number
+  id?: string
   role: 'user' | 'ai'
   content: string
 }
@@ -225,22 +225,26 @@ const loadAppInfo = async () => {
   }
 }
 
-// Markdown 渲染配置
+// Markdown 渲染配置（先实例化再挂 highlight，避免对象字面量自引用导致 TS 推断为 any）
 const md = new MarkdownIt({
   html: true,
   linkify: true,
   typographer: true,
-  highlight: function (str, lang) {
-    if (lang && hljs.getLanguage(lang)) {
-      try {
-        return '<pre class="hljs"><code>' +
-               hljs.highlight(str, { language: lang, ignoreIllegals: true }).value +
-               '</code></pre>';
-      } catch (__) {}
+})
+md.options.highlight = function (str: string, lang: string): string {
+  if (lang && hljs.getLanguage(lang)) {
+    try {
+      return (
+        '<pre class="hljs"><code>' +
+        hljs.highlight(str, { language: lang, ignoreIllegals: true }).value +
+        '</code></pre>'
+      )
+    } catch (__) {
+      /* ignore */
     }
-    return '<pre class="hljs"><code>' + md.utils.escapeHtml(str) + '</code></pre>';
   }
-});
+  return '<pre class="hljs"><code>' + md.utils.escapeHtml(str) + '</code></pre>'
+}
 
 const renderMarkdown = (text: string) => {
   if (!text) return ''
@@ -253,7 +257,7 @@ const loadHistory = async (firstLoad = false) => {
   loadingHistory.value = true
   try {
     const res = await listAppChatHistory({
-      appId: Number(appId),
+      appId,
       pageSize: 10,
       lastCreateTime: lastCreateTime.value,
     })
@@ -269,7 +273,10 @@ const loadHistory = async (firstLoad = false) => {
       // 获取后端的 lastCreateTime 作为游标
       if (newMessages.length > 0) {
         messages.value = [...newMessages.reverse(), ...messages.value]
-        lastCreateTime.value = records[records.length - 1].createTime
+        const tail = records[records.length - 1]
+        if (tail?.createTime) {
+          lastCreateTime.value = tail.createTime
+        }
       }
       
       hasMore.value = records.length >= 10
@@ -321,7 +328,10 @@ const sendChatMessage = async (prompt: string) => {
         try {
           // 解析后端返回的 JSON 字符串，取其 d 字段的值
           const jsonData = JSON.parse(data)
-          messages.value[aiMsgIndex].content += jsonData.d || ''
+          const aiMsg = messages.value[aiMsgIndex]
+          if (aiMsg) {
+            aiMsg.content += jsonData.d || ''
+          }
           scrollToBottom()
         } catch (e) {
           // 如果解析失败（例如心跳包或格式不完整），则不做处理或记录错误
@@ -383,15 +393,17 @@ onMounted(async () => {
   
   // 判断是新建（带有 query param prompt）还是查看已有应用
   const initialPrompt = route.query.prompt as string
-  const isOwner = appInfo.value?.userId === loginUser.value.id
+  const isViewMode = route.query.mode === 'view'
+  const isOwner =
+    String(appInfo.value?.userId ?? '') === String(loginUser.value?.id ?? '')
 
   // 1. 如果有 URL query prompt (通常是刚从创建页跳转过来)
-  if (initialPrompt && messages.value.length === 0 && !appInfo.value?.codeGenType) {
+  if (!isViewMode && initialPrompt && messages.value.length === 0 && !appInfo.value?.codeGenType) {
     messages.value.push({ role: 'user', content: initialPrompt })
     scrollToBottom()
     await sendChatMessage(initialPrompt)
     router.replace({ query: { ...route.query, prompt: undefined } })
-  } else if (isOwner && messages.value.length === 0 && appInfo.value?.initPrompt) {
+  } else if (!isViewMode && isOwner && messages.value.length === 0 && appInfo.value?.initPrompt) {
     // 2. 如果是自己的 app，且没有对话历史，自动发送 initPrompt
     messages.value.push({ role: 'user', content: appInfo.value.initPrompt })
     scrollToBottom()

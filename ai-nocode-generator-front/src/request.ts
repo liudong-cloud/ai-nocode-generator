@@ -1,7 +1,39 @@
 import JSONBig from 'json-bigint'
-import axios from 'axios'
+import axios, { type AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
 import { message } from 'ant-design-vue'
 import CONFIG from '@/config'
+
+/** 业务码：未登录（与后端约定一致） */
+const NOT_LOGIN_CODE = 40100
+
+function isUnauthorizedPayload(data: unknown): boolean {
+  if (!data || typeof data !== 'object') return false
+  const code = (data as { code?: unknown }).code
+  return code === NOT_LOGIN_CODE || code === String(NOT_LOGIN_CODE)
+}
+
+function isUserLoginStatusRequest(config?: InternalAxiosRequestConfig): boolean {
+  const url = String(config?.url ?? '')
+  return url.includes('user/get/login')
+}
+
+function redirectToLoginPage() {
+  if (window.location.pathname.includes('/user/login')) {
+    return
+  }
+  message.warning('请先登录')
+  const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '')
+  const loginPath = base ? `${base}/user/login` : '/user/login'
+  const redirect = encodeURIComponent(window.location.href)
+  window.location.assign(`${loginPath}?redirect=${redirect}`)
+}
+
+function handleUnauthorizedResponse(response: AxiosResponse) {
+  if (isUserLoginStatusRequest(response.config)) {
+    return
+  }
+  redirectToLoginPage()
+}
 
 // 创建 Axios 实例
 const myAxios = axios.create({
@@ -35,22 +67,18 @@ myAxios.interceptors.request.use(
 myAxios.interceptors.response.use(
   function (response) {
     const { data } = response
-    // 未登录
-    if (data.code === 40100) {
-      // 不是获取用户信息的请求，并且用户目前不是已经在用户登录页面，则跳转到登录页面
-      if (
-        !response.request.responseURL.includes('user/get/login') &&
-        !window.location.pathname.includes('/user/login')
-      ) {
-        message.warning('请先登录')
-        window.location.href = `/user/login?redirect=${window.location.href}`
-      }
+    // HTTP 200 但业务体为未登录
+    if (isUnauthorizedPayload(data)) {
+      handleUnauthorizedResponse(response)
     }
     return response
   },
-  function (error) {
-    // Any status codes that falls outside the range of 2xx cause this function to trigger
-    // Do something with response error
+  function (error: AxiosError) {
+    const res = error.response
+    // HTTP 4xx/5xx 响应体中携带未登录业务码（部分网关或异常包装会走这里）
+    if (res?.data !== undefined && isUnauthorizedPayload(res.data)) {
+      handleUnauthorizedResponse(res as AxiosResponse)
+    }
     return Promise.reject(error)
   },
 )
