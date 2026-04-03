@@ -15,11 +15,16 @@ import com.mybatisflex.spring.service.impl.ServiceImpl;
 import com.liud.ainocodegenerator.model.entity.ChatHistory;
 import com.liud.ainocodegenerator.mapper.ChatHistoryMapper;
 import com.liud.ainocodegenerator.service.ChatHistoryService;
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.memory.ChatMemory;
 import jakarta.annotation.Resource;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  *  服务层实现。
@@ -108,6 +113,30 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
         return this.page(Page.of(1, pageSize), queryWrapper);
     }
 
+    @Override
+    public int loadMemoryFromHistory(Long appId, ChatMemory chatMemory, int maxCount) {
+        List<ChatHistory> historyList = this.list(QueryWrapper.create().eq("appId", appId)
+                .orderBy("createTime", false)
+                // 前面已经存了数据库最新的一条对话消息了，后面memoryStore会存一条最新的消息，所以这里需要跳过第一条，避免重复加载
+                .limit(1, maxCount));
+
+        if (historyList == null || historyList.size() == 0) {
+            return 0;
+        }
+        chatMemory.clear();
+        AtomicInteger loadCount = new AtomicInteger();
+        List<ChatHistory> reversedHistory = historyList.reversed();
+        reversedHistory.forEach(chatHistory -> {
+            if (ChatHistoryMessageTypeEnum.USER.getValue().equals(chatHistory.getMessageType())) {
+                chatMemory.add(UserMessage.from(chatHistory.getMessage()));
+                loadCount.getAndIncrement();
+            } else if (ChatHistoryMessageTypeEnum.AI.getValue().equals(chatHistory.getMessageType())) {
+                chatMemory.add(AiMessage.from(chatHistory.getMessage()));
+                loadCount.getAndIncrement();
+            }
+        });
+        return loadCount.get();
+    }
 
 
 }
