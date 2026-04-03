@@ -1,6 +1,7 @@
 package com.liud.ainocodegenerator.core;
 
 import com.liud.ainocodegenerator.ai.AINoCodeGeneratorService;
+import com.liud.ainocodegenerator.ai.AINoCodeGeneratorServiceFactory;
 import com.liud.ainocodegenerator.ai.model.HtmlCodeResult;
 import com.liud.ainocodegenerator.ai.model.MultiFileCodeResult;
 import com.liud.ainocodegenerator.core.parser.CodeParserExecutor;
@@ -19,7 +20,7 @@ import java.io.File;
 @Slf4j
 public class AICodeGenerateFacade {
     @Resource
-    private AINoCodeGeneratorService aiNoCodeGeneratorService;
+    private AINoCodeGeneratorServiceFactory aiNoCodeGeneratorServiceFactory;
 
     /**
      * 统一门面入口
@@ -32,6 +33,7 @@ public class AICodeGenerateFacade {
         if (codeGenTypeEnum == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "codeGenTypeEnum is null");
         }
+        AINoCodeGeneratorService aiNoCodeGeneratorService = aiNoCodeGeneratorServiceFactory.getAINoCodeService(appid);
         return switch (codeGenTypeEnum) {
             case HTML -> {
                 HtmlCodeResult htmlCodeResult = aiNoCodeGeneratorService.generateHtmlCode(userMessage);
@@ -64,6 +66,7 @@ public class AICodeGenerateFacade {
     }
 
     private Flux<String> processCodeStream(String userMessage, CodeGenTypeEnum codeGenTypeEnum, Long appid) {
+        AINoCodeGeneratorService aiNoCodeGeneratorService = aiNoCodeGeneratorServiceFactory.getAINoCodeService(appid);
         Flux<String> flux = aiNoCodeGeneratorService.generateMultiFileCodeStream(userMessage);
         StringBuilder stringBuilder = new StringBuilder();
         return flux.doOnNext(stringBuilder::append)

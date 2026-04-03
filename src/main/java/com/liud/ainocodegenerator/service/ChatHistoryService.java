@@ -4,6 +4,7 @@ import com.liud.ainocodegenerator.model.entity.User;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.service.IService;
 import com.liud.ainocodegenerator.model.entity.ChatHistory;
+import dev.langchain4j.memory.ChatMemory;
 
 import java.time.LocalDateTime;
 
@@ -22,4 +23,6 @@ public interface ChatHistoryService extends IService<ChatHistory> {
     Page<ChatHistory> listAppChatHistoryByPage(Long appId, int pageSize,
                                                LocalDateTime lastCreateTime,
                                                User loginUser);
+
+    int loadMemoryFromHistory(Long appId, ChatMemory chatMemory, int maxCount);
 }
