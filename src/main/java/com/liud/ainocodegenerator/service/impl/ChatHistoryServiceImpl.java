@@ -123,6 +123,7 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
         if (historyList == null || historyList.size() == 0) {
             return 0;
         }
+        // 清理历史缓存
         chatMemory.clear();
         AtomicInteger loadCount = new AtomicInteger();
         List<ChatHistory> reversedHistory = historyList.reversed();
