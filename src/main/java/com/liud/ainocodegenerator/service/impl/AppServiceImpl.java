@@ -62,7 +62,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     @Resource
     private AICodeGenerateFacade aiCodeGenerateFacade;
 
-    @Value("${code.deploy-host:http://localhost:9000}")
+    @Value("${code.deploy-host:http://localhost:80}")
     private String deployHost;
 
     @Override
