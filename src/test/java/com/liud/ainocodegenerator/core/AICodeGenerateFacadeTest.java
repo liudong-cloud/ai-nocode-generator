@@ -25,8 +25,9 @@ class AICodeGenerateFacadeTest {
 
     @Test
     void generateAICodeAndSaveStream() {
-        Flux<String> flux = aiCodeGenerateFacade.generateAICodeAndSaveStream("生成一个登录页面，要求20行", CodeGenTypeEnum.MULTI_FILE, 3123123L);
+//        Flux<String> flux = aiCodeGenerateFacade.generateAICodeAndSaveStream("生成一个登录页面，要求20行", CodeGenTypeEnum.MULTI_FILE, 3123123L);
+//        Long block = flux.count().block();
+        Flux<String> flux = aiCodeGenerateFacade.generateAICodeAndSaveStream("生成程序员刘东的博客，要求整个行数在200行", CodeGenTypeEnum.VUE_PROJECT, 1L);
         Long block = flux.count().block();
-
     }
 }

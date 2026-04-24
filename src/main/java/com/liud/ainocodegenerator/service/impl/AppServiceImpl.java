@@ -7,6 +7,7 @@ import cn.hutool.core.io.IORuntimeException;
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
 import com.liud.ainocodegenerator.core.AICodeGenerateFacade;
+import com.liud.ainocodegenerator.core.handle.AIJsonHandleExecutor;
 import com.liud.ainocodegenerator.exception.BusinessException;
 import com.liud.ainocodegenerator.exception.ErrorCode;
 import com.liud.ainocodegenerator.exception.ThrowUtils;
@@ -28,14 +29,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
 
 import java.io.File;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.random.RandomGenerator;
 import java.util.stream.Collectors;
 
 import static com.liud.ainocodegenerator.constant.AppConstant.CODE_DEPLOY_ROOT_DIR;
@@ -61,6 +60,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     @Resource
     private AICodeGenerateFacade aiCodeGenerateFacade;
+
+    @Resource
+    private AIJsonHandleExecutor aiJsonHandleExecutor;
 
     @Value("${code.deploy-host:http://localhost:80}")
     private String deployHost;
@@ -120,18 +122,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         chatHistoryService.addChatMessage(appId, prompt, ChatHistoryMessageTypeEnum.USER.getValue(), userId);
         // 5.调用门面方法生成代码（流式）
         Flux<String> aiCodeRes = aiCodeGenerateFacade.generateAICodeAndSaveStream(prompt, CodeGenTypeEnum.getEnumByValue(codeGenType), appId);
-        // 6.保存AI消息
-        StringBuilder aiMessageBuilder = new StringBuilder();
-        return aiCodeRes.doOnNext(aiMessageBuilder::append)
-                .doOnComplete(() -> {
-                    String aiMessage = aiMessageBuilder.toString();
-                    chatHistoryService.addChatMessage(appId, aiMessage, ChatHistoryMessageTypeEnum.AI.getValue(), userId);
-                })
-                .doOnError(e -> {
-                    log.error("保存AI生成代码异常", e);
-                    chatHistoryService.addChatMessage(appId, e.getMessage(), ChatHistoryMessageTypeEnum.AI.getValue(), userId);
-                });
-
+        // 6.保存AI消息, 使用执行器模式
+        return aiJsonHandleExecutor.handle(aiCodeRes, Objects.requireNonNull(CodeGenTypeEnum.getEnumByValue(codeGenType)), appId, loginUser);
     }
 
     @Override

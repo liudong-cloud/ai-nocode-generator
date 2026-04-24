@@ -2,6 +2,8 @@ package com.liud.ainocodegenerator.ai;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.liud.ainocodegenerator.ai.tools.FileWriteTool;
+import com.liud.ainocodegenerator.model.enums.CodeGenTypeEnum;
 import com.liud.ainocodegenerator.service.ChatHistoryService;
 import dev.langchain4j.community.store.memory.chat.redis.RedisChatMemoryStore;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
@@ -10,7 +12,6 @@ import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.service.AiServices;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.time.Duration;
@@ -23,7 +24,10 @@ public class AINoCodeGeneratorServiceFactory {
     private ChatModel chatModel;
 
     @Resource
-    private StreamingChatModel streamingChatModel;
+    private StreamingChatModel openAiStreamingChatModel;
+
+    @Resource
+    private StreamingChatModel reasoningStreamingChatModel;
 
     @Resource
     private RedisChatMemoryStore redisChatMemoryStore;
@@ -38,7 +42,7 @@ public class AINoCodeGeneratorServiceFactory {
      * - 写入后 30 分钟过期
      * - 访问后 10 分钟过期
      */
-    private final Cache<Long, AINoCodeGeneratorService> serviceCache = Caffeine.newBuilder()
+    private final Cache<String, AINoCodeGeneratorService> serviceCache = Caffeine.newBuilder()
             .maximumSize(1000)
             .expireAfterWrite(Duration.ofMinutes(30))
             .expireAfterAccess(Duration.ofMinutes(10))
@@ -53,24 +57,47 @@ public class AINoCodeGeneratorServiceFactory {
 //    }
 
     public AINoCodeGeneratorService getAINoCodeService(Long appId) {
-        return serviceCache.get(appId, this::createAiNoCodeServer);
+        return getAINoCodeService(appId, CodeGenTypeEnum.HTML);
     }
 
-    private AINoCodeGeneratorService createAiNoCodeServer(Long appId){
+    public AINoCodeGeneratorService getAINoCodeService(Long appId, CodeGenTypeEnum codeGenTypeEnum) {
+        return serviceCache.get(buildCacheKey(appId, codeGenTypeEnum), k -> createAiNoCodeServer(appId, codeGenTypeEnum));
+    }
+
+    private AINoCodeGeneratorService createAiNoCodeServer(Long appId, CodeGenTypeEnum codeGenTypeEnum){
+        log.info("创建 AINoCodeGeneratorService, appId: {}, codeGenTypeEnum: {}", appId, codeGenTypeEnum);
+        log.info("chatModel: {}, openAiStreamingChatModel: {}, reasoningStreamingChatModel: {}", 
+                chatModel, openAiStreamingChatModel, reasoningStreamingChatModel);
+        log.info("redisChatMemoryStore: {}, chatHistoryService: {}", redisChatMemoryStore, chatHistoryService);
+        
         MessageWindowChatMemory windowChatMemory = MessageWindowChatMemory.builder()
                 .id(appId)
                 .chatMemoryStore(redisChatMemoryStore)
                 .alwaysKeepSystemMessageFirst(true)
                 .maxMessages(20)
                 .build();
+        log.info("创建 MessageWindowChatMemory 成功, id: {}", windowChatMemory.id());
+        
         // 初始化时候，通过数据库加载历史数据
         chatHistoryService.loadMemoryFromHistory(appId, windowChatMemory, 20);
-        return AiServices.builder(AINoCodeGeneratorService.class)
-                .chatMemory(windowChatMemory)
-                .chatModel(chatModel)
-                .streamingChatModel(streamingChatModel)
-                .build();
+        log.info("加载历史记忆完成");
+        // 根据
+        return switch (codeGenTypeEnum) {
+            case VUE_PROJECT -> AiServices.builder(AINoCodeGeneratorService.class)
+                    .tools(new FileWriteTool())
+                    .chatModel(chatModel)
+                    .chatMemoryProvider(s -> windowChatMemory)
+                    .streamingChatModel(reasoningStreamingChatModel)
+                    .build();
+            case HTML, MULTI_FILE -> AiServices.builder(AINoCodeGeneratorService.class)
+                    .chatMemory(windowChatMemory)
+                    .chatModel(chatModel)
+                    .streamingChatModel(openAiStreamingChatModel)
+                    .build();
+        };
     }
 
-
+    String buildCacheKey(Long appId, CodeGenTypeEnum codeGenTypeEnum){
+        return appId + "_" + codeGenTypeEnum.getValue();
+    }
 }

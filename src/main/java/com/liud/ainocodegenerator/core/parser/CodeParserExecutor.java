@@ -8,6 +8,7 @@ public class CodeParserExecutor {
         return switch (codeGenTypeEnum) {
             case HTML -> new HtmlCodeParser().parseCode(codeContent);
             case MULTI_FILE -> new MultiFileCodeParser().parseCode(codeContent);
+            default -> new MultiFileCodeParser().parseCode(codeContent);
         };
     }
 

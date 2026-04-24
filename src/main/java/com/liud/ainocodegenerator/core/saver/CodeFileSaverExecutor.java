@@ -18,6 +18,7 @@ public class CodeFileSaverExecutor {
         return switch (codeGenTypeEnum) {
             case HTML -> htmlCodeFileSaver.saveCodeFile((HtmlCodeResult) codeContent, codeGenTypeEnum, appid);
             case MULTI_FILE -> multiFileCodeFileSaver.saveCodeFile((MultiFileCodeResult) codeContent, codeGenTypeEnum, appid);
+            case VUE_PROJECT -> multiFileCodeFileSaver.saveCodeFile((MultiFileCodeResult) codeContent, codeGenTypeEnum, appid);
         };
     }
 }
