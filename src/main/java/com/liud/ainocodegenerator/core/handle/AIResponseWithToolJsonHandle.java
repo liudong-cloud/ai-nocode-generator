@@ -4,6 +4,8 @@ import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
+import com.liud.ainocodegenerator.constant.AppConstant;
+import com.liud.ainocodegenerator.core.builder.VueProjectBuilder;
 import com.liud.ainocodegenerator.model.entity.User;
 import com.liud.ainocodegenerator.model.enums.ChatHistoryMessageTypeEnum;
 import com.liud.ainocodegenerator.model.enums.StreamMessageTypeEnum;
@@ -23,6 +25,8 @@ public class AIResponseWithToolJsonHandle {
 
     @Resource
     private ChatHistoryService chatHistoryService;
+    @Resource
+    private VueProjectBuilder vueProjectBuilder;
 
     public Flux<String> handle(Flux<String> orgFlux, Long appId, User loginUser) {
         StringBuilder aiMessageBuilder = new StringBuilder();
@@ -69,6 +73,8 @@ public class AIResponseWithToolJsonHandle {
                 .doOnComplete(() -> {
                     String aiMessage = aiMessageBuilder.toString();
                     chatHistoryService.addChatMessage(appId, aiMessage, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
+                    // 构建代码
+                    vueProjectBuilder.buildProjectAsync(AppConstant.CODE_OUTPUT_ROOT_DIR + "/vue_project_" + appId);
                 })
                 .doOnError(e -> {
                     log.error("保存AI生成代码异常", e);
