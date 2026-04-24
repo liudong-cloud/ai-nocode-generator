@@ -20,7 +20,7 @@ import java.time.Duration;
 @Slf4j
 public class AINoCodeGeneratorServiceFactory {
 
-    @Resource
+    @Resource(name = "openAiChatModel")
     private ChatModel chatModel;
 
     @Resource

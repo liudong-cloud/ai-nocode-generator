@@ -6,7 +6,9 @@ import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.io.IORuntimeException;
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
+import com.liud.ainocodegenerator.constant.AppConstant;
 import com.liud.ainocodegenerator.core.AICodeGenerateFacade;
+import com.liud.ainocodegenerator.core.builder.VueProjectBuilder;
 import com.liud.ainocodegenerator.core.handle.AIJsonHandleExecutor;
 import com.liud.ainocodegenerator.exception.BusinessException;
 import com.liud.ainocodegenerator.exception.ErrorCode;
@@ -67,6 +69,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     @Value("${code.deploy-host:http://localhost:80}")
     private String deployHost;
 
+    @Resource
+    private VueProjectBuilder vueProjectBuilder;
+
     @Override
     public String deploy(Long appId, User user) {
         // 参数校验
@@ -89,6 +94,17 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         File file = new File(sourceFilePath);
         if (!file.exists()) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "源文件不存在");
+        }
+        CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenType);
+        if (codeGenTypeEnum == CodeGenTypeEnum.VUE_PROJECT) {
+            sourceFilePath = AppConstant.CODE_OUTPUT_ROOT_DIR + "/vue_project_" + appId;
+            boolean buildProject = vueProjectBuilder.buildProject(sourceFilePath);
+            ThrowUtils.throwIf(!buildProject, ErrorCode.SYSTEM_ERROR, "VUE构建项目失败，请检查源文件是否存在");
+
+            File dist = new File(sourceFilePath, "dist");
+            ThrowUtils.throwIf(!dist.exists(), ErrorCode.SYSTEM_ERROR, "VUE构建项目成功，但是缺少dist目录");
+            // 把dist目录作为部署文件
+            file = dist;
         }
         // 构建部署目录，复制源文件
         String deployDir = CODE_DEPLOY_ROOT_DIR + File.separator + deployKey;
