@@ -4,6 +4,7 @@ import com.liud.ainocodegenerator.ai.AINoCodeGeneratorService;
 import com.liud.ainocodegenerator.ai.AINoCodeGeneratorServiceFactory;
 import com.liud.ainocodegenerator.ai.model.HtmlCodeResult;
 import com.liud.ainocodegenerator.ai.model.MultiFileCodeResult;
+import com.liud.ainocodegenerator.core.diagnostics.ToolArgumentsDiagnostics;
 import com.liud.ainocodegenerator.core.parser.CodeParserExecutor;
 import com.liud.ainocodegenerator.core.saver.CodeFileSaverExecutor;
 import com.liud.ainocodegenerator.exception.BusinessException;
@@ -21,8 +22,10 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.FluxSink;
 
 import java.io.File;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Service
 @Slf4j
@@ -78,7 +81,7 @@ public class AICodeGenerateFacade {
         AINoCodeGeneratorService aiNoCodeGeneratorService = aiNoCodeGeneratorServiceFactory.getAINoCodeService(appid, codeGenTypeEnum);
         if (codeGenTypeEnum.equals(CodeGenTypeEnum.VUE_PROJECT)) {
             TokenStream tokenStream = aiNoCodeGeneratorService.generateVueProjectCodeStream(appid, userMessage);
-            return handleTokenSteam(tokenStream);
+            return handleTokenSteam(tokenStream, appid);
         }
         Flux<String> flux = aiNoCodeGeneratorService.generateMultiFileCodeStream(userMessage);
         StringBuilder stringBuilder = new StringBuilder();
@@ -95,12 +98,15 @@ public class AICodeGenerateFacade {
                 });
     }
 
-    private Flux<String> handleTokenSteam(TokenStream tokenStream){
+    private Flux<String> handleTokenSteam(TokenStream tokenStream, Long appId){
         return Flux.create(fluxSink -> {
+            AtomicReference<String> lastToolDiagnostics = new AtomicReference<>("<none>");
+            fluxSink.onCancel(() -> log.info("Vue 项目代码生成流被下游取消"));
+            fluxSink.onDispose(() -> log.debug("Vue 项目代码生成流已释放"));
             tokenStream
                     .onPartialResponse((String partialResponse) -> {
                         AiResponseMessage aiResponseMessage = new AiResponseMessage(partialResponse);
-                        fluxSink.next(Json.toJson(aiResponseMessage));
+                        emitNextSafely(fluxSink, Json.toJson(aiResponseMessage));
                     })
                     // .onPartialThinking((PartialThinking partialThinking) -> fluxSink.next(partialThinking.toString()))
                     // .onRetrieved((List<Content> contents) -> fluxSink.next(contents.toString()))
@@ -112,17 +118,81 @@ public class AICodeGenerateFacade {
 //                    })
                     // This will be invoked right before a tool is executed. BeforeToolExecution contains ToolExecutionRequest (e.g. tool name, tool arguments, etc.)
                     .beforeToolExecution((BeforeToolExecution beforeToolExecution) -> {
+                        String toolDiagnostics = ToolArgumentsDiagnostics.summarizeRawArguments(beforeToolExecution.request().arguments());
+                        lastToolDiagnostics.set("tool=" + beforeToolExecution.request().name()
+                                + ", requestId=" + beforeToolExecution.request().id()
+                                + ", " + toolDiagnostics);
+                        log.info("准备执行工具, appId: {}, tool: {}, requestId: {}, diagnostics: {}",
+                                appId,
+                                beforeToolExecution.request().name(),
+                                beforeToolExecution.request().id(),
+                                toolDiagnostics);
                         ToolRequestMessage toolRequestMessage = new ToolRequestMessage(beforeToolExecution.request().id(), beforeToolExecution.request().name(), beforeToolExecution.request().arguments());
-                        fluxSink.next(Json.toJson(toolRequestMessage));
+                        emitNextSafely(fluxSink, Json.toJson(toolRequestMessage));
                     })
                     // This will be invoked right after a tool is executed. ToolExecution contains ToolExecutionRequest and tool execution result.
                     .onToolExecuted((ToolExecution toolExecution) -> {
+                        log.info("工具执行完成, appId: {}, tool: {}, requestId: {}, resultPreview: {}",
+                                appId,
+                                toolExecution.request().name(),
+                                toolExecution.request().id(),
+                                ToolArgumentsDiagnostics.summarizeText(toolExecution.result()));
                         ToolExecutedMessage toolExecutedMessage = new ToolExecutedMessage(toolExecution.request().id(), toolExecution.request().name(), toolExecution.request().arguments(), toolExecution.result());
-                        fluxSink.next(Json.toJson(toolExecutedMessage));
+                        emitNextSafely(fluxSink, Json.toJson(toolExecutedMessage));
                     })
-                    .onCompleteResponse((ChatResponse response) -> fluxSink.complete())
-                    .onError(fluxSink::error)
+                    .onCompleteResponse((ChatResponse response) -> {
+                        log.info("Vue 项目代码生成流完成");
+                        if (!fluxSink.isCancelled()) {
+                            fluxSink.complete();
+                        }
+                    })
+                    .onError(error -> {
+                        if (isStreamClosedException(error)) {
+                            log.warn("Vue 项目代码生成流被关闭: {}, appId: {}, lastToolDiagnostics: {}",
+                                    findThrowableMessage(error), appId, lastToolDiagnostics.get(), error);
+                        } else {
+                            log.error("Vue 项目代码生成流异常, appId: {}, lastToolDiagnostics: {}", appId, lastToolDiagnostics.get(), error);
+                        }
+                        if (!fluxSink.isCancelled()) {
+                            fluxSink.error(error);
+                        }
+                    })
                     .start();
         });
+    }
+
+    private void emitNextSafely(FluxSink<String> fluxSink, String payload) {
+        if (!fluxSink.isCancelled()) {
+            fluxSink.next(payload);
+        }
+    }
+
+    private boolean isStreamClosedException(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            String message = current.getMessage();
+            if (message != null) {
+                String lowerMessage = message.toLowerCase();
+                if (lowerMessage.contains("closed")
+                        || lowerMessage.contains("broken pipe")
+                        || lowerMessage.contains("connection reset")
+                        || lowerMessage.contains("cancel")) {
+                    return true;
+                }
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private String findThrowableMessage(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current.getMessage() != null) {
+                return current.getMessage();
+            }
+            current = current.getCause();
+        }
+        return "unknown";
     }
 }

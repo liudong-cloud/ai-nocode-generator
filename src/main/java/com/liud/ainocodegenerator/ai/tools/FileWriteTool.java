@@ -1,6 +1,7 @@
 package com.liud.ainocodegenerator.ai.tools;
 
 import com.liud.ainocodegenerator.constant.AppConstant;
+import com.liud.ainocodegenerator.core.diagnostics.ToolArgumentsDiagnostics;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolMemoryId;
@@ -11,6 +12,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * 文件写入工具
@@ -18,6 +21,8 @@ import java.nio.file.StandardOpenOption;
  */
 @Slf4j
 public class FileWriteTool {
+
+    private static final ConcurrentMap<String, Integer> FILE_CHUNK_INDEX_CACHE = new ConcurrentHashMap<>();
 
     @Tool("文件写入工具")
     public String writeFile(
@@ -27,24 +32,22 @@ public class FileWriteTool {
             String content,
             @ToolMemoryId Long appId
     ) {
+        log.info("接收到文件写入工具调用, appId: {}, diagnostics: {}",
+                appId,
+                ToolArgumentsDiagnostics.summarizeWriteFileInvocation(relativeFilePath, content));
         try {
-            Path path = Paths.get(relativeFilePath);
-            if (!path.isAbsolute()) {
-                // 相对路径处理，创建基于 appId 的项目目录
-                String projectDirName = "vue_project_" + appId;
-                Path projectRoot = Paths.get(AppConstant.CODE_OUTPUT_ROOT_DIR, projectDirName);
-                path = projectRoot.resolve(relativeFilePath);
-            }
-            // 创建父目录（如果不存在）
-            Path parentDir = path.getParent();
-            if (parentDir != null) {
-                Files.createDirectories(parentDir);
-            }
-            // 写入文件内容
-            Files.write(path, content.getBytes(),
+            Path path = resolveFilePath(relativeFilePath, appId);
+            createParentDirectories(path);
+            Files.writeString(path,
+                    content,
                     StandardOpenOption.CREATE,
-                    StandardOpenOption.TRUNCATE_EXISTING);
-            log.info("成功写入文件: {}", path.toAbsolutePath());
+                    StandardOpenOption.TRUNCATE_EXISTING,
+                    StandardOpenOption.WRITE);
+            clearChunkState(relativeFilePath, appId);
+            log.info("成功写入文件: {}, appId: {}, diagnostics: {}",
+                    path.toAbsolutePath(),
+                    appId,
+                    ToolArgumentsDiagnostics.summarizeWriteFileInvocation(relativeFilePath, content));
             // 注意要返回相对路径，不能让 AI 把文件绝对路径返回给用户
             return "文件写入成功: " + relativeFilePath;
         } catch (IOException e) {
@@ -52,6 +55,93 @@ public class FileWriteTool {
             log.error(errorMessage, e);
             return errorMessage;
         }
+    }
+
+    @Tool("分块文件写入工具")
+    public String writeFileChunk(
+            @P("文件的相对路径") String relativeFilePath,
+            @P("当前分块的内容，必须是按顺序写入的源码片段") String chunkContent,
+            @P("当前分块的序号，从 0 开始递增") Integer chunkIndex,
+            @P("当前分块是否为当前文件的最后一个分块") Boolean lastChunk,
+            @ToolMemoryId Long appId
+    ) {
+        log.info("接收到分块文件写入工具调用, appId: {}, diagnostics: {}",
+                appId,
+                ToolArgumentsDiagnostics.summarizeWriteFileChunkInvocation(relativeFilePath, chunkContent, chunkIndex, lastChunk));
+        if (relativeFilePath == null || relativeFilePath.isBlank()) {
+            return "分块文件写入失败: relativeFilePath 不能为空";
+        }
+        if (chunkContent == null) {
+            return "分块文件写入失败: chunkContent 不能为空";
+        }
+        if (chunkIndex == null || chunkIndex < 0) {
+            return "分块文件写入失败: chunkIndex 必须是大于等于 0 的整数";
+        }
+        boolean isLastChunk = Boolean.TRUE.equals(lastChunk);
+        String stateKey = buildStateKey(relativeFilePath, appId);
+        try {
+            Path path = resolveFilePath(relativeFilePath, appId);
+            createParentDirectories(path);
+            Integer previousChunkIndex = FILE_CHUNK_INDEX_CACHE.get(stateKey);
+            if (chunkIndex == 0) {
+                Files.writeString(path,
+                        chunkContent,
+                        StandardOpenOption.CREATE,
+                        StandardOpenOption.TRUNCATE_EXISTING,
+                        StandardOpenOption.WRITE);
+            } else {
+                if (previousChunkIndex == null) {
+                    return "分块文件写入失败: 缺少首个分块，relativeFilePath=" + relativeFilePath;
+                }
+                if (chunkIndex != previousChunkIndex + 1) {
+                    return "分块文件写入失败: 分块顺序错误，expected=" + (previousChunkIndex + 1) + ", actual=" + chunkIndex + ", relativeFilePath=" + relativeFilePath;
+                }
+                Files.writeString(path,
+                        chunkContent,
+                        StandardOpenOption.CREATE,
+                        StandardOpenOption.APPEND,
+                        StandardOpenOption.WRITE);
+            }
+            if (isLastChunk) {
+                clearChunkState(relativeFilePath, appId);
+                String result = "分块文件写入完成: " + relativeFilePath + "，最后分块序号=" + chunkIndex;
+                log.info(result + ", appId: {}", appId);
+                return result;
+            }
+            FILE_CHUNK_INDEX_CACHE.put(stateKey, chunkIndex);
+            String result = "分块文件写入成功: " + relativeFilePath + "，分块序号=" + chunkIndex;
+            log.info(result + ", appId: {}", appId);
+            return result;
+        } catch (IOException e) {
+            String errorMessage = "分块文件写入失败: " + relativeFilePath + ", 错误: " + e.getMessage();
+            log.error(errorMessage, e);
+            return errorMessage;
+        }
+    }
+
+    private Path resolveFilePath(String relativeFilePath, Long appId) {
+        Path path = Paths.get(relativeFilePath);
+        if (!path.isAbsolute()) {
+            String projectDirName = "vue_project_" + appId;
+            Path projectRoot = Paths.get(AppConstant.CODE_OUTPUT_ROOT_DIR, projectDirName);
+            path = projectRoot.resolve(relativeFilePath);
+        }
+        return path;
+    }
+
+    private void createParentDirectories(Path path) throws IOException {
+        Path parentDir = path.getParent();
+        if (parentDir != null) {
+            Files.createDirectories(parentDir);
+        }
+    }
+
+    private void clearChunkState(String relativeFilePath, Long appId) {
+        FILE_CHUNK_INDEX_CACHE.remove(buildStateKey(relativeFilePath, appId));
+    }
+
+    private String buildStateKey(String relativeFilePath, Long appId) {
+        return appId + ":" + relativeFilePath;
     }
 }
 

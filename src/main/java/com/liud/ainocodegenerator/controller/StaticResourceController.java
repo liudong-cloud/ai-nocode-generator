@@ -48,6 +48,10 @@ public class StaticResourceController {
             // 构建文件路径
             String filePath = PREVIEW_ROOT_DIR + "/" + deployKey + resourcePath;
             File file = new File(filePath);
+            if (file.exists() && file.isDirectory()) {
+                file = new File(file, "index.html");
+                filePath = file.getAbsolutePath();
+            }
             // 检查文件是否存在
             if (!file.exists()) {
                 return ResponseEntity.notFound().build();

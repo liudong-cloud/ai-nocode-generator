@@ -26,8 +26,8 @@ public class AINoCodeGeneratorServiceFactory {
     @Resource
     private StreamingChatModel openAiStreamingChatModel;
 
-    @Resource
-    private StreamingChatModel reasoningStreamingChatModel;
+    @Resource(name = "vueProjectStreamingChatModel")
+    private StreamingChatModel vueProjectStreamingChatModel;
 
     @Resource
     private RedisChatMemoryStore redisChatMemoryStore;
@@ -66,15 +66,15 @@ public class AINoCodeGeneratorServiceFactory {
 
     private AINoCodeGeneratorService createAiNoCodeServer(Long appId, CodeGenTypeEnum codeGenTypeEnum){
         log.info("创建 AINoCodeGeneratorService, appId: {}, codeGenTypeEnum: {}", appId, codeGenTypeEnum);
-        log.info("chatModel: {}, openAiStreamingChatModel: {}, reasoningStreamingChatModel: {}", 
-                chatModel, openAiStreamingChatModel, reasoningStreamingChatModel);
+        log.info("chatModel: {}, openAiStreamingChatModel: {}, vueProjectStreamingChatModel: {}",
+                chatModel, openAiStreamingChatModel, vueProjectStreamingChatModel);
         log.info("redisChatMemoryStore: {}, chatHistoryService: {}", redisChatMemoryStore, chatHistoryService);
         
         MessageWindowChatMemory windowChatMemory = MessageWindowChatMemory.builder()
                 .id(appId)
                 .chatMemoryStore(redisChatMemoryStore)
                 .alwaysKeepSystemMessageFirst(true)
-                .maxMessages(20)
+                .maxMessages(100)
                 .build();
         log.info("创建 MessageWindowChatMemory 成功, id: {}", windowChatMemory.id());
         
@@ -87,7 +87,7 @@ public class AINoCodeGeneratorServiceFactory {
                     .tools(new FileWriteTool())
                     .chatModel(chatModel)
                     .chatMemoryProvider(s -> windowChatMemory)
-                    .streamingChatModel(reasoningStreamingChatModel)
+                    .streamingChatModel(vueProjectStreamingChatModel)
                     .build();
             case HTML, MULTI_FILE -> AiServices.builder(AINoCodeGeneratorService.class)
                     .chatMemory(windowChatMemory)

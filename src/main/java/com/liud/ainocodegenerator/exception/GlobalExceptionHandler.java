@@ -60,6 +60,13 @@ public class GlobalExceptionHandler {
         String uri = request.getRequestURI();
         if ((accept != null && accept.contains("text/event-stream")) ||
                 uri.contains("/chat/gen/code")) {
+            if (response == null) {
+                return true;
+            }
+            if (response.isCommitted()) {
+                log.warn("SSE 响应已提交，跳过全局异常写回: code={}, message={}", errorCode, errorMessage);
+                return true;
+            }
             try {
                 // 设置SSE响应头
                 response.setContentType("text/event-stream");
@@ -76,9 +83,6 @@ public class GlobalExceptionHandler {
                 // 发送业务错误事件（避免与标准error事件冲突）
                 String sseData = "event: business-error\ndata: " + errorJson + "\n\n";
                 response.getWriter().write(sseData);
-                response.getWriter().flush();
-                // 发送结束事件
-                response.getWriter().write("event: done\ndata: {}\n\n");
                 response.getWriter().flush();
                 // 表示已处理SSE请求
                 return true;
