@@ -26,6 +26,7 @@ import com.mybatisflex.core.paginate.Page;
 import dev.langchain4j.internal.Json;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.annotations.Param;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
@@ -34,6 +35,7 @@ import reactor.core.publisher.Flux;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.Map;
 
 /**
  *  控制层。
@@ -42,6 +44,7 @@ import java.util.HashMap;
  */
 @RestController
 @RequestMapping("/app")
+@Slf4j
 public class AppController {
 
     @Resource
@@ -72,15 +75,71 @@ public class AppController {
      */
     @GetMapping(value = "/chat/gen/code", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ServerSentEvent<String>> chatToGenCode(@Param("appId") Long appId, @Param("prompt") String prompt, HttpServletRequest httpServletRequest) {
-        // 校验参数
-        ThrowUtils.throwIf(appId == null || appId < 0, ErrorCode.PARAMS_ERROR, "appId参数有误");
-        ThrowUtils.throwIf(StrUtil.isBlank(prompt), ErrorCode.PARAMS_ERROR, "输入的提示参数不能为空");
+        return Flux.defer(() -> {
+                    // 校验参数
+                    ThrowUtils.throwIf(appId == null || appId < 0, ErrorCode.PARAMS_ERROR, "appId参数有误");
+                    ThrowUtils.throwIf(StrUtil.isBlank(prompt), ErrorCode.PARAMS_ERROR, "输入的提示参数不能为空");
 
-        User loginUser = userService.getLoginUser(httpServletRequest);
-        return appService.chatToGenCode(appId, prompt, loginUser).map(content -> {
-            HashMap<String, String> d = MapUtil.of("d", content);
-            return ServerSentEvent.builder(Json.toJson(d)).build();
-        }).concatWith(Flux.just(ServerSentEvent.<String>builder().event("end").data("").build()));
+                    User loginUser = userService.getLoginUser(httpServletRequest);
+                    return appService.chatToGenCode(appId, prompt, loginUser)
+                            .map(this::buildChunkEvent);
+                })
+                .onErrorResume(error -> {
+                    String errorMessage = resolveStreamErrorMessage(error);
+                    log.warn("AI 对话生成代码流异常, appId: {}, message: {}", appId, errorMessage, error);
+                    return Flux.just(buildStreamErrorEvent(errorMessage));
+                })
+                .concatWith(Flux.just(buildEndEvent()));
+    }
+
+    private ServerSentEvent<String> buildChunkEvent(String content) {
+        HashMap<String, String> d = MapUtil.of("d", content);
+        return ServerSentEvent.builder(Json.toJson(d)).build();
+    }
+
+    private ServerSentEvent<String> buildStreamErrorEvent(String errorMessage) {
+        Map<String, Object> errorData = Map.of(
+                "error", true,
+                "message", errorMessage
+        );
+        return ServerSentEvent.<String>builder(Json.toJson(errorData))
+                .event("stream-error")
+                .build();
+    }
+
+    private ServerSentEvent<String> buildEndEvent() {
+        return ServerSentEvent.<String>builder()
+                .event("end")
+                .data("")
+                .build();
+    }
+
+    private String resolveStreamErrorMessage(Throwable throwable) {
+        if (throwable instanceof BusinessException businessException) {
+            return businessException.getMessage();
+        }
+        if (isStreamClosedException(throwable)) {
+            return "AI 响应流已中断，请稍后重试";
+        }
+        return "代码生成过程中发生异常，请稍后重试";
+    }
+
+    private boolean isStreamClosedException(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            String message = current.getMessage();
+            if (message != null) {
+                String lowerMessage = message.toLowerCase();
+                if (lowerMessage.contains("closed")
+                        || lowerMessage.contains("broken pipe")
+                        || lowerMessage.contains("connection reset")
+                        || lowerMessage.contains("cancel")) {
+                    return true;
+                }
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     /**

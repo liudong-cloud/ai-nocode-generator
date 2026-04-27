@@ -14,6 +14,9 @@ public class AIJsonHandleExecutor {
     @Resource
     private AIResponseWithToolJsonHandle aiResponseWithToolJsonHandle;
 
+    @Resource
+    private AITextJsonHandle aiTextJsonHandle;
+
 
     public Flux<String> handle(Flux<String> orgFlux, CodeGenTypeEnum codeGenTypeEnum, Long appId, User loginUser) {
         return switch (codeGenTypeEnum){
@@ -21,7 +24,7 @@ public class AIJsonHandleExecutor {
                 yield  aiResponseWithToolJsonHandle.handle(orgFlux, appId, loginUser);
             }
              case HTML, MULTI_FILE -> {
-                 yield new AITextJsonHandle().handle(orgFlux, appId, loginUser);
+                 yield aiTextJsonHandle.handle(orgFlux, appId, loginUser);
             }
             default ->
                 throw new BusinessException(ErrorCode.SYSTEM_ERROR ,"不支持的代码生成类型:" + codeGenTypeEnum.getValue());
