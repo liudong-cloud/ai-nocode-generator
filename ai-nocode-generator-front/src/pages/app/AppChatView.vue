@@ -18,21 +18,11 @@
           <template #icon><EditOutlined /></template>
           编辑
         </a-button>
-        <a-button
-          v-if="deployUrl"
-          type="link"
-          :href="deployUrl"
-          target="_blank"
-        >
+        <a-button v-if="deployUrl" type="link" :href="deployUrl" target="_blank">
           <template #icon><LinkOutlined /></template>
           访问链接
         </a-button>
-        <a-button
-          type="primary"
-          :loading="deploying"
-          class="deploy-btn"
-          @click="handleDeploy"
-        >
+        <a-button type="primary" :loading="deploying" class="deploy-btn" @click="handleDeploy">
           <template #icon><CloudUploadOutlined /></template>
           部署
         </a-button>
@@ -43,7 +33,7 @@
     <div class="chat-body">
       <!-- 左侧对话区域 -->
       <div class="chat-left">
-        <div class="messages-area" ref="messagesRef">
+        <div class="messages-area" ref="messagesRef" @click="handleMessagesAreaClick">
           <!-- 加载更多 -->
           <div v-if="hasMore" class="load-more-wrapper">
             <a-button type="link" :loading="loadingHistory" @click="loadHistory(false)">
@@ -113,13 +103,7 @@
       <div class="chat-right">
         <div class="preview-header">
           <span class="preview-title">生成效果预览</span>
-          <a-button
-            v-if="previewUrl"
-            type="link"
-            size="small"
-            :href="previewUrl"
-            target="_blank"
-          >
+          <a-button v-if="previewUrl" type="link" size="small" :href="previewUrl" target="_blank">
             <template #icon><ExportOutlined /></template>
             新窗口打开
           </a-button>
@@ -195,6 +179,14 @@ const lastCreateTime = ref<string | undefined>(undefined)
 const hasMore = ref(false)
 const loadingHistory = ref(false)
 
+const buildPreviewUrl = (codeGenType?: string, id?: string | number, timestamp = refreshKey.value) => {
+  if (!codeGenType || !id) {
+    return ''
+  }
+  const subPath = codeGenType === 'vue_project' ? 'dist/' : ''
+  return `${CONFIG.baseURL}/static/${codeGenType}_${id}/${subPath}?t=${timestamp}`
+}
+
 // 统一更新预览 URL 的逻辑
 const updatePreviewUrl = () => {
   // 核心逻辑：只要后端有了生成出的 codeGenType，就可以尝试展示预览
@@ -202,7 +194,7 @@ const updatePreviewUrl = () => {
   // 但如果是正在对话中或者刚生成出来的，也应该展示
   if (appInfo.value?.codeGenType && appInfo.value?.id) {
     if (messages.value.length >= 2 || isStreaming.value) {
-      const newUrl = `${CONFIG.baseURL}/static/${appInfo.value.codeGenType}_${appInfo.value.id}/?t=${refreshKey.value}`
+      const newUrl = buildPreviewUrl(appInfo.value.codeGenType, appInfo.value.id, refreshKey.value)
       if (previewUrl.value !== newUrl) {
         previewUrl.value = newUrl
       }
@@ -210,6 +202,36 @@ const updatePreviewUrl = () => {
     }
   }
   previewUrl.value = ''
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+const waitForPreviewReady = async () => {
+  if (!appInfo.value?.codeGenType || !appInfo.value?.id) {
+    return false
+  }
+  const maxAttempts = appInfo.value.codeGenType === 'vue_project' ? 20 : 3
+  const interval = appInfo.value.codeGenType === 'vue_project' ? 2000 : 500
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const probeUrl = buildPreviewUrl(appInfo.value.codeGenType, appInfo.value.id, Date.now())
+    if (!probeUrl) {
+      return false
+    }
+    try {
+      const response = await fetch(probeUrl, {
+        method: 'GET',
+        credentials: 'include',
+        cache: 'no-store',
+      })
+      if (response.ok) {
+        return true
+      }
+    } catch {
+      // ignore and retry
+    }
+    await sleep(interval)
+  }
+  return false
 }
 
 // 加载应用信息
@@ -220,7 +242,7 @@ const loadAppInfo = async () => {
       appInfo.value = res.data.data
       updatePreviewUrl()
     }
-  } catch (e) {
+  } catch {
     message.error('加载应用信息失败')
   }
 }
@@ -239,16 +261,92 @@ md.options.highlight = function (str: string, lang: string): string {
         hljs.highlight(str, { language: lang, ignoreIllegals: true }).value +
         '</code></pre>'
       )
-    } catch (__) {
+    } catch {
       /* ignore */
     }
   }
   return '<pre class="hljs"><code>' + md.utils.escapeHtml(str) + '</code></pre>'
 }
+const parseFenceInfo = (info: string) => {
+  const normalizedInfo = info.trim()
+  if (!normalizedInfo) {
+    return { lang: '', filePath: '' }
+  }
+  const parts = normalizedInfo.split(/\s+/)
+  const lang = parts[0] || ''
+  const filePart = parts.find((part) => part.startsWith('file=')) || ''
+  return {
+    lang,
+    filePath: filePart ? filePart.slice(5) : '',
+  }
+}
+
+md.renderer.rules.fence = (tokens, idx, options) => {
+  const token = tokens[idx]
+  if (!token) {
+    return ''
+  }
+  const { lang, filePath } = parseFenceInfo(token.info)
+  const highlighted = options.highlight
+    ? options.highlight(token.content, lang, '')
+    : '<pre class="hljs"><code>' + md.utils.escapeHtml(token.content) + '</code></pre>'
+  const fileLabel = filePath
+    ? `<span class="code-file-name">${md.utils.escapeHtml(filePath)}</span>`
+    : '<span class="code-file-name">源码片段</span>'
+  const buttonLabel = filePath ? '复制文件' : '复制代码'
+
+  return `
+    <div class="code-file-card">
+      <div class="code-file-toolbar">
+        ${fileLabel}
+        <button type="button" class="code-copy-btn" data-file-path="${md.utils.escapeHtml(filePath)}">${buttonLabel}</button>
+      </div>
+      ${highlighted}
+    </div>
+  `
+}
 
 const renderMarkdown = (text: string) => {
   if (!text) return ''
   return md.render(text)
+}
+
+const copyText = async (text: string) => {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text)
+    return
+  }
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.focus()
+  textarea.select()
+  document.execCommand('copy')
+  document.body.removeChild(textarea)
+}
+
+const handleMessagesAreaClick = async (event: MouseEvent) => {
+  const target = event.target as HTMLElement | null
+  const copyButton = target?.closest('.code-copy-btn') as HTMLButtonElement | null
+  if (!copyButton) {
+    return
+  }
+  const card = copyButton.closest('.code-file-card')
+  const codeElement = card?.querySelector('code')
+  const codeText = codeElement?.textContent || ''
+  if (!codeText) {
+    message.error('未找到可复制的源码内容')
+    return
+  }
+  const filePath = copyButton.dataset.filePath || ''
+  try {
+    await copyText(codeText)
+    message.success(filePath ? `已复制 ${filePath}` : '源码已复制')
+  } catch {
+    message.error('复制失败，请手动复制')
+  }
 }
 
 // 加载历史消息
@@ -268,7 +366,7 @@ const loadHistory = async (firstLoad = false) => {
         role: item.messageType as 'user' | 'ai',
         content: item.message || '',
       }))
-      
+
       // 按照时间升序排列：历史记录返回一般是时间降序（游标往前查），所以这里要反转一下或者看后端返回顺序
       // 获取后端的 lastCreateTime 作为游标
       if (newMessages.length > 0) {
@@ -278,15 +376,15 @@ const loadHistory = async (firstLoad = false) => {
           lastCreateTime.value = tail.createTime
         }
       }
-      
+
       hasMore.value = records.length >= 10
       updatePreviewUrl()
-      
+
       if (firstLoad) {
         scrollToBottom()
       }
     }
-  } catch (e) {
+  } catch {
     message.error('加载历史记录失败')
   } finally {
     loadingHistory.value = false
@@ -302,9 +400,13 @@ const scrollToBottom = () => {
   })
 }
 
-watch(messages, () => {
-  scrollToBottom()
-}, { deep: true })
+watch(
+  messages,
+  () => {
+    scrollToBottom()
+  },
+  { deep: true },
+)
 
 // SSE 对话
 const sendChatMessage = async (prompt: string) => {
@@ -321,6 +423,47 @@ const sendChatMessage = async (prompt: string) => {
   try {
     const url = `${CONFIG.baseURL}/app/chat/gen/code?appId=${appId}&prompt=${encodeURIComponent(prompt)}`
     const eventSource = new EventSource(url, { withCredentials: true })
+    let streamFinished = false
+
+    const appendToAiMessage = (content: string) => {
+      const aiMsg = messages.value[aiMsgIndex]
+      if (aiMsg) {
+        aiMsg.content += content
+      }
+      scrollToBottom()
+    }
+
+    const appendErrorToAiMessage = (errorText: string) => {
+      const aiMsg = messages.value[aiMsgIndex]
+      if (aiMsg) {
+        aiMsg.content = aiMsg.content
+          ? `${aiMsg.content}\n\n[系统提示] ${errorText}`
+          : `[系统提示] ${errorText}`
+      }
+      scrollToBottom()
+    }
+
+    const finishStream = async (
+      options: { reloadPreview?: boolean; errorMessage?: string } = {},
+    ) => {
+      if (streamFinished) return
+      streamFinished = true
+      eventSource.close()
+      isStreaming.value = false
+
+      if (options.errorMessage) {
+        message.error(options.errorMessage)
+      }
+
+      if (options.reloadPreview !== false) {
+        await loadAppInfo()
+        const previewReady = await waitForPreviewReady()
+        if (previewReady) {
+          refreshKey.value = Date.now()
+          updatePreviewUrl()
+        }
+      }
+    }
 
     eventSource.onmessage = (event) => {
       const data = event.data
@@ -328,11 +471,7 @@ const sendChatMessage = async (prompt: string) => {
         try {
           // 解析后端返回的 JSON 字符串，取其 d 字段的值
           const jsonData = JSON.parse(data)
-          const aiMsg = messages.value[aiMsgIndex]
-          if (aiMsg) {
-            aiMsg.content += jsonData.d || ''
-          }
-          scrollToBottom()
+          appendToAiMessage(jsonData.d || '')
         } catch (e) {
           // 如果解析失败（例如心跳包或格式不完整），则不做处理或记录错误
           console.error('解析 SSE 数据逻辑错误:', e, data)
@@ -340,19 +479,47 @@ const sendChatMessage = async (prompt: string) => {
       }
     }
 
+    eventSource.addEventListener('end', async () => {
+      await finishStream()
+    })
+
+    eventSource.addEventListener('stream-error', async (event: MessageEvent) => {
+      let errorText = '代码生成过程中连接中断，请稍后重试'
+      if (event.data) {
+        try {
+          const errorData = JSON.parse(event.data)
+          errorText = errorData.message || errorText
+        } catch (e) {
+          console.error('解析 stream-error 事件失败:', e, event.data)
+        }
+      }
+      appendErrorToAiMessage(errorText)
+      await finishStream({ errorMessage: errorText })
+    })
+
+    eventSource.addEventListener('business-error', async (event: MessageEvent) => {
+      let errorText = '请求失败，请稍后重试'
+      if (event.data) {
+        try {
+          const errorData = JSON.parse(event.data)
+          errorText = errorData.message || errorText
+        } catch (e) {
+          console.error('解析 business-error 事件失败:', e, event.data)
+        }
+      }
+      appendErrorToAiMessage(errorText)
+      await finishStream({ reloadPreview: false, errorMessage: errorText })
+    })
+
     eventSource.onerror = async () => {
-      eventSource.close()
-      
-      // 添加延时，确保服务器端静态文件已经完整写入磁盘
-      await new Promise(resolve => setTimeout(resolve, 1500))
-      
-      isStreaming.value = false
-      refreshKey.value = Date.now()
-      
-      // 重新加载应用信息, loadAppInfo 内部会调用 updatePreviewUrl
-      await loadAppInfo()
+      if (streamFinished) {
+        return
+      }
+      const errorText = '连接已中断，请稍后重试'
+      appendErrorToAiMessage(errorText)
+      await finishStream({ errorMessage: errorText })
     }
-  } catch (e) {
+  } catch {
     isStreaming.value = false
     message.error('对话失败，请稍后重试')
   }
@@ -381,7 +548,7 @@ const handleDeploy = async () => {
     } else {
       message.error(res.data.message || '部署失败')
     }
-  } catch (e) {
+  } catch {
     message.error('部署失败，请稍后重试')
   } finally {
     deploying.value = false
@@ -390,12 +557,11 @@ const handleDeploy = async () => {
 
 onMounted(async () => {
   await Promise.all([loadAppInfo(), loadHistory(true)])
-  
+
   // 判断是新建（带有 query param prompt）还是查看已有应用
   const initialPrompt = route.query.prompt as string
   const isViewMode = route.query.mode === 'view'
-  const isOwner =
-    String(appInfo.value?.userId ?? '') === String(loginUser.value?.id ?? '')
+  const isOwner = String(appInfo.value?.userId ?? '') === String(loginUser.value?.id ?? '')
 
   // 1. 如果有 URL query prompt (通常是刚从创建页跳转过来)
   if (!isViewMode && initialPrompt && messages.value.length === 0 && !appInfo.value?.codeGenType) {
@@ -409,7 +575,7 @@ onMounted(async () => {
     scrollToBottom()
     await sendChatMessage(appInfo.value.initPrompt)
   }
-  
+
   updatePreviewUrl()
 })
 </script>
@@ -540,6 +706,52 @@ onMounted(async () => {
   font-weight: 700;
 }
 
+.message-bubble :deep(.code-file-card) {
+  margin: 12px 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #0f172a;
+}
+
+.message-bubble :deep(.code-file-toolbar) {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: #111827;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.message-bubble :deep(.code-file-name) {
+  color: #e5e7eb;
+  font-size: 12px;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.message-bubble :deep(.code-copy-btn) {
+  border: none;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #38b2ac, #4299e1);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.message-bubble :deep(.code-copy-btn:hover) {
+  background: linear-gradient(135deg, #2c9e97, #3182ce);
+}
+
+.message-bubble :deep(.code-file-card pre) {
+  margin: 0;
+  border-radius: 0;
+}
+
 /* 打字动画 */
 .typing-indicator {
   display: flex;
@@ -565,7 +777,9 @@ onMounted(async () => {
 }
 
 @keyframes typing {
-  0%, 80%, 100% {
+  0%,
+  80%,
+  100% {
     transform: scale(0.6);
     opacity: 0.4;
   }
