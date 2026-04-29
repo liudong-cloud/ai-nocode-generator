@@ -22,6 +22,16 @@
           <template #icon><LinkOutlined /></template>
           访问链接
         </a-button>
+        <a-button
+          type="default"
+          :loading="downloading"
+          class="download-btn"
+          style="margin-right: 8px"
+          @click="handleDownloadCode"
+        >
+          <template #icon><DownloadOutlined /></template>
+          下载代码
+        </a-button>
         <a-button type="primary" :loading="deploying" class="deploy-btn" @click="handleDeploy">
           <template #icon><CloudUploadOutlined /></template>
           部署
@@ -142,11 +152,12 @@ import {
   ExportOutlined,
   EditOutlined,
   UpOutlined,
+  DownloadOutlined,
 } from '@ant-design/icons-vue'
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github.css' // Github style for code block
-import { getAppVoById, deploy } from '@/api/appController'
+import { getAppVoById, deploy, downloadAppCode } from '@/api/appController'
 import { listAppChatHistory } from '@/api/chatHistoryController'
 import { useUserStore } from '@/stores/user'
 import CONFIG from '@/config'
@@ -157,6 +168,7 @@ const route = useRoute()
 const appId = route.params.id as string
 const appInfo = ref<API.AppVO>()
 const deploying = ref(false)
+const downloading = ref(false)
 const deployUrl = ref('')
 const previewUrl = ref('')
 const refreshKey = ref(Date.now())
@@ -179,7 +191,11 @@ const lastCreateTime = ref<string | undefined>(undefined)
 const hasMore = ref(false)
 const loadingHistory = ref(false)
 
-const buildPreviewUrl = (codeGenType?: string, id?: string | number, timestamp = refreshKey.value) => {
+const buildPreviewUrl = (
+  codeGenType?: string,
+  id?: string | number,
+  timestamp = refreshKey.value,
+) => {
   if (!codeGenType || !id) {
     return ''
   }
@@ -535,6 +551,67 @@ const handleSendMessage = async () => {
   scrollToBottom()
 
   await sendChatMessage(text)
+}
+
+// 从 Content-Disposition 响应头中解析文件名
+const parseFileNameFromContentDisposition = (disposition?: string): string => {
+  if (!disposition) {
+    return ''
+  }
+  // 优先匹配 RFC 5987 格式: filename*=UTF-8''xxx
+  const utf8Match = /filename\*\s*=\s*[^']*''([^;\n]+)/i.exec(disposition)
+  if (utf8Match && utf8Match[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1].trim().replace(/^"|"$/g, ''))
+    } catch {
+      // ignore
+    }
+  }
+  // 兼容普通格式: filename="xxx" 或 filename=xxx
+  const match = /filename\s*=\s*"?([^";\n]+)"?/i.exec(disposition)
+  return match && match[1] ? match[1].trim() : ''
+}
+
+// 下载应用代码
+const handleDownloadCode = async () => {
+  if (!appId) {
+    message.error('应用 ID 不存在')
+    return
+  }
+  downloading.value = true
+  try {
+    const res = await downloadAppCode({ appId }, { responseType: 'blob' })
+    const blobData = res.data as unknown as Blob
+    // 后端在异常时可能返回 JSON 错误信息，此时 type 不是 zip
+    if (blobData.type && blobData.type.includes('application/json')) {
+      const text = await blobData.text()
+      try {
+        const errInfo = JSON.parse(text) as { message?: string }
+        message.error(errInfo.message || '下载失败')
+      } catch {
+        message.error('下载失败')
+      }
+      return
+    }
+    const disposition =
+      (res.headers?.['content-disposition'] as string | undefined) ||
+      (res.headers?.['Content-Disposition'] as string | undefined)
+    const fileName = parseFileNameFromContentDisposition(disposition) || `${appId}.zip`
+    const blob = new Blob([blobData], { type: 'application/zip' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = fileName
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    message.success('下载成功')
+  } catch {
+    message.error('下载失败，请稍后重试')
+  } finally {
+    downloading.value = false
+  }
 }
 
 // 部署

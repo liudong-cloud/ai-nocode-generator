@@ -4,8 +4,7 @@ declare namespace API {
   }
 
   type AppDeployRequest = {
-    /** 雪花 ID，全程使用字符串避免 JS Number 精度丢失 */
-    appId?: string
+    appId?: number
   }
 
   type AppQueryRequest = {
@@ -13,25 +12,25 @@ declare namespace API {
     pageSize?: number
     sortField?: string
     sortOrder?: string
-    id?: string
+    id?: number
     appName?: string
     cover?: string
     initPrompt?: string
     codeGenType?: string
     deployKey?: string
     priority?: number
-    userId?: string
+    userId?: number
   }
 
   type AppUpdateRequest = {
-    id?: string
+    id?: number
     appName?: string
     cover?: string
     priority?: number
   }
 
   type AppVO = {
-    id?: string
+    id?: number
     appName?: string
     cover?: string
     initPrompt?: string
@@ -39,7 +38,7 @@ declare namespace API {
     deployKey?: string
     deployedTime?: string
     priority?: number
-    userId?: string
+    userId?: number
     createTime?: string
     updateTime?: string
     user?: UserVO
@@ -106,11 +105,11 @@ declare namespace API {
   }
 
   type ChatHistory = {
-    id?: string
+    id?: number
     message?: string
     messageType?: string
-    appId?: string
-    userId?: string
+    appId?: number
+    userId?: number
     createTime?: string
     updateTime?: string
     isDelete?: number
@@ -121,29 +120,33 @@ declare namespace API {
     pageSize?: number
     sortField?: string
     sortOrder?: string
-    id?: string
+    id?: number
     message?: string
     messageType?: string
-    appId?: string
-    userId?: string
+    appId?: number
+    userId?: number
     lastCreateTime?: string
   }
 
   type chatToGenCodeParams = {
-    appId: string
+    appId: number
     prompt: string
   }
 
   type DeleteRequest = {
-    id?: string
+    id?: number
+  }
+
+  type downloadAppCodeParams = {
+    appId: number
   }
 
   type getAppByIdAdminParams = {
-    id: string
+    id: number
   }
 
   type getAppVOByIdParams = {
-    id: string
+    id: number
   }
 
   type getUserByIdParams = {
@@ -155,7 +158,7 @@ declare namespace API {
   }
 
   type listAppChatHistoryParams = {
-    appId: string
+    appId: number
     pageSize?: number
     lastCreateTime?: string
   }
