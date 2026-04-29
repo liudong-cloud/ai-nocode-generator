@@ -23,6 +23,7 @@ import com.liud.ainocodegenerator.model.vo.AppVO;
 import com.liud.ainocodegenerator.model.vo.UserVO;
 import com.liud.ainocodegenerator.service.AppService;
 import com.liud.ainocodegenerator.service.ChatHistoryService;
+import com.liud.ainocodegenerator.service.ScreenshotService;
 import com.liud.ainocodegenerator.service.UserService;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
@@ -43,7 +44,7 @@ import static com.liud.ainocodegenerator.constant.AppConstant.CODE_DEPLOY_ROOT_D
 import static com.liud.ainocodegenerator.constant.AppConstant.CODE_OUTPUT_ROOT_DIR;
 
 /**
- *  服务层实现。
+ * 服务层实现。
  *
  * @author liud
  */
@@ -72,6 +73,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     @Resource
     private VueProjectBuilder vueProjectBuilder;
 
+    @Resource
+    private ScreenshotService screenshotService;
+
     @Override
     public String deploy(Long appId, User user) {
         // 参数校验
@@ -90,7 +94,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         // 构建源文件目录，获取源文件
         String codeGenType = app.getCodeGenType();
         String filePath = StrUtil.format("{}_{}", codeGenType, appId);
-        String sourceFilePath = CODE_OUTPUT_ROOT_DIR + File.separator +  filePath;
+        String sourceFilePath = CODE_OUTPUT_ROOT_DIR + File.separator + filePath;
         File file = new File(sourceFilePath);
         if (!file.exists()) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "源文件不存在");
@@ -120,7 +124,25 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         depApp.setDeployedTime(LocalDateTime.now());
         boolean updateRes = this.updateById(depApp);
         ThrowUtils.throwIf(!updateRes, ErrorCode.SYSTEM_ERROR, "部署失败");
-        return StrUtil.format("{}/{}/", deployHost, deployKey);
+
+        // 10. 构建应用访问 URL
+        String appDeployUrl = StrUtil.format("{}/{}/", deployHost, deployKey);
+        // 11. 异步生成截图并更新应用封面
+        generateAndUploadScreenshot(appId, appDeployUrl);
+        return appDeployUrl;
+    }
+
+    private void generateAndUploadScreenshot(Long appId, String appDeployUrl) {
+        Thread.startVirtualThread(
+                () -> {
+                    String screenshotUrl = screenshotService.generateAndUploadScreenshot(appDeployUrl);
+                    App app = new App();
+                    app.setId(appId);
+                    app.setCover(screenshotUrl);
+                    boolean update = this.updateById(app);
+                    ThrowUtils.throwIf(!update, ErrorCode.OPERATION_ERROR, "更新应用封面信息失败");
+                }
+        );
     }
 
     @Override

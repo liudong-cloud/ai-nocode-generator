@@ -55,10 +55,10 @@ langchain4j:
     streaming-chat-model:
       base-url: https://api.deepseek.com
       api-key: sk-6351e168f77c4312b6ddf96868161a5d
-      model-name: deepseek-chat
+      model-name: deepseek-v4-flash
       log-requests: true
       log-responses: true
-      max-tokens: 8192
+      max-tokens: 384000
     chat-model:
       base-url: https://api.deepseek.com
       api-key: sk-6351e168f77c4312b6ddf96868161a5d
@@ -68,4 +68,13 @@ langchain4j:
       max-tokens: 8192
       response-format: json_object
       strict-json-schema: true
+
+# 添加 COS 对象存储配置（需要从腾讯云获取）
+cos:
+  client:
+    endpoint: https://snapshots-1427168280.cos.ap-shanghai.myqcloud.com
+    secretId: AKIDCM2iEh9a2Qo370iDUWLxLXXKvKXWJ2bx
+    secretKey: A8uSntmROGvOhplW4RbZN2XqwrY8Wyc3
+    region: ap-shanghai
+    bucket: snapshots-1427168280
 
