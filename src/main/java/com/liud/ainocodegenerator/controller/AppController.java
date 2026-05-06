@@ -18,7 +18,6 @@ import com.liud.ainocodegenerator.model.dto.app.AppQueryRequest;
 import com.liud.ainocodegenerator.model.dto.app.AppUpdateRequest;
 import com.liud.ainocodegenerator.model.entity.App;
 import com.liud.ainocodegenerator.model.entity.User;
-import com.liud.ainocodegenerator.model.enums.CodeGenTypeEnum;
 import com.liud.ainocodegenerator.model.vo.AppVO;
 import com.liud.ainocodegenerator.service.AppService;
 import com.liud.ainocodegenerator.service.ProjectDownloadService;
@@ -201,16 +200,8 @@ public class AppController {
         }
         // 获取当前登录用户
         User loginUser = userService.getLoginUser(request);
-        App app = new App();
-        app.setUserId(loginUser.getId());
-        app.setInitPrompt(initPrompt);
-        // 应用名称暂为initPrompt截取前12个字符
-        app.setAppName(initPrompt.substring(0, Math.min(initPrompt.length(), 12)));
-        // 暂时定位vue
-        app.setCodeGenType(CodeGenTypeEnum.VUE_PROJECT.getValue());
-        boolean result = appService.save(app);
-        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
-        return ResultUtils.success(app.getId());
+        Long appId = appService.addApp(loginUser, initPrompt);
+        return ResultUtils.success(appId);
     }
 
     /**

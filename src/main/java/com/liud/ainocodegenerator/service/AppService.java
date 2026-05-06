@@ -27,6 +27,15 @@ public interface AppService extends IService<App> {
     String deploy(Long appId, User user);
 
     /**
+     * 添加应用
+     *
+     * @param loginUser 登录用户
+     * @param initPrompt 初始提示
+     * @return
+     */
+    Long addApp(User loginUser, String initPrompt);
+
+    /**
      * 聊天生成代码
      *
      * @param appId

@@ -6,6 +6,7 @@ import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.io.IORuntimeException;
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
+import com.liud.ainocodegenerator.ai.AiCodeGenTypeRoutingService;
 import com.liud.ainocodegenerator.constant.AppConstant;
 import com.liud.ainocodegenerator.core.AICodeGenerateFacade;
 import com.liud.ainocodegenerator.core.builder.VueProjectBuilder;
@@ -76,6 +77,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     @Resource
     private ScreenshotService screenshotService;
 
+    @Resource
+    private AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService;
+
     @Override
     public String deploy(Long appId, User user) {
         // 参数校验
@@ -143,6 +147,21 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                     ThrowUtils.throwIf(!update, ErrorCode.OPERATION_ERROR, "更新应用封面信息失败");
                 }
         );
+    }
+
+    @Override
+    public Long addApp(User loginUser, String initPrompt) {
+        App app = new App();
+        app.setUserId(loginUser.getId());
+        app.setInitPrompt(initPrompt);
+        // 应用名称暂为initPrompt截取前12个字符
+        app.setAppName(initPrompt.substring(0, Math.min(initPrompt.length(), 12)));
+        // 根据 initPrompt 路由出 CodeGenTypeEnum
+        CodeGenTypeEnum codeGenTypeEnum = aiCodeGenTypeRoutingService.routeCodeGenType(initPrompt);
+        app.setCodeGenType(codeGenTypeEnum.getValue());
+        boolean result = this.save(app);
+        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
+        return app.getId();
     }
 
     @Override
