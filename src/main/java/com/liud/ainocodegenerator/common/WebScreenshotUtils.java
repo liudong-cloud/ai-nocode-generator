@@ -25,15 +25,32 @@ public class WebScreenshotUtils {
 
     private static final ThreadLocal<WebDriver> driverThreadLocal = new ThreadLocal<>();
 
+    private static final int DEFAULT_WIDTH = 1600;
+    private static final int DEFAULT_HEIGHT = 900;
+
     public static WebDriver getDriver() {
         WebDriver driver = driverThreadLocal.get();
         if (driver == null) {
-            final int DEFAULT_WIDTH = 1600;
-            final int DEFAULT_HEIGHT = 900;
             driver = initChromeDriver(DEFAULT_WIDTH, DEFAULT_HEIGHT);
             driverThreadLocal.set(driver);
         }
         return driver;
+    }
+
+    /**
+     * ✅ 必须调用：销毁 WebDriver 和 ThreadLocal
+     */
+    public static void quitDriver() {
+        WebDriver driver = driverThreadLocal.get();
+        if (driver != null) {
+            try {
+                driver.quit(); // 关闭浏览器 + 进程
+            } catch (Exception e) {
+                // ignore
+            } finally {
+                driverThreadLocal.remove(); // 防止 ThreadLocal 泄漏
+            }
+        }
     }
 
     /**
@@ -77,6 +94,8 @@ public class WebScreenshotUtils {
         } catch (Exception e) {
             log.error("网页截图失败: {}", webUrl, e);
             return null;
+        } finally {
+            quitDriver();
         }
     }
 
