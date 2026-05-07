@@ -30,7 +30,7 @@ public class VueProjectStreamingChatModelConfig {
     private Boolean logResponses;
 
     /**
-     * Vue 项目生成专用流式模型：显式关闭 thinking / reasoning 回传，避免多轮对话中要求带回 reasoning_content。
+     * Vue 项目生成专用流式模型：显式开启 thinking，并让 LangChain4j 负责 reasoning_content 的收发。
      */
     @Bean("vueProjectStreamingChatModel")
     public StreamingChatModel vueProjectStreamingChatModel() {
@@ -41,9 +41,8 @@ public class VueProjectStreamingChatModelConfig {
                 .maxTokens(maxTokens)
                 .logRequests(logRequests)
                 .logResponses(logResponses)
-//                .returnThinking(false)
-//                .sendThinking(false)
-//                .customParameters(Map.of("thinking", Map.of("type", "disabled")))
+                .returnThinking(true)
+                .sendThinking(true)
                 .customParameters(Map.of("thinking", Map.of("type", "enabled")))
                 .build();
     }

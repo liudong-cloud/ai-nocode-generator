@@ -72,18 +72,8 @@ public class AINoCodeGeneratorServiceFactory {
         log.info("chatModel: {}, openAiStreamingChatModel: {}, vueProjectStreamingChatModel: {}",
                 chatModel, openAiStreamingChatModel, vueProjectStreamingChatModel);
         log.info("redisChatMemoryStore: {}, chatHistoryService: {}", redisChatMemoryStore, chatHistoryService);
-        
-        MessageWindowChatMemory windowChatMemory = MessageWindowChatMemory.builder()
-                .id(appId)
-                .chatMemoryStore(redisChatMemoryStore)
-                .alwaysKeepSystemMessageFirst(true)
-                .maxMessages(100)
-                .build();
-        log.info("创建 MessageWindowChatMemory 成功, id: {}", windowChatMemory.id());
-        
-        // 初始化时候，通过数据库加载历史数据
-        chatHistoryService.loadMemoryFromHistory(appId, windowChatMemory, 20);
-        log.info("加载历史记忆完成");
+
+        MessageWindowChatMemory windowChatMemory = buildChatMemory(appId, codeGenTypeEnum);
         // 根据
         return switch (codeGenTypeEnum) {
             case VUE_PROJECT -> AiServices.builder(AINoCodeGeneratorService.class)
@@ -98,6 +88,25 @@ public class AINoCodeGeneratorServiceFactory {
                     .streamingChatModel(openAiStreamingChatModel)
                     .build();
         };
+    }
+
+    private MessageWindowChatMemory buildChatMemory(Long appId, CodeGenTypeEnum codeGenTypeEnum) {
+        MessageWindowChatMemory windowChatMemory = MessageWindowChatMemory.builder()
+                .id(appId)
+                .chatMemoryStore(redisChatMemoryStore)
+                .alwaysKeepSystemMessageFirst(true)
+                .maxMessages(100)
+                .build();
+        log.info("创建 MessageWindowChatMemory 成功, id: {}", windowChatMemory.id());
+
+        if (codeGenTypeEnum == CodeGenTypeEnum.VUE_PROJECT) {
+            log.info("Vue 项目对话跳过数据库文本历史回灌，使用 Redis 原生 memory 作为上下文");
+            return windowChatMemory;
+        }
+
+        chatHistoryService.loadMemoryFromHistory(appId, windowChatMemory, 20);
+        log.info("加载历史记忆完成");
+        return windowChatMemory;
     }
 
     String buildCacheKey(Long appId, CodeGenTypeEnum codeGenTypeEnum){
