@@ -7,17 +7,32 @@
           <template #icon><ArrowLeftOutlined /></template>
         </a-button>
         <span class="app-title">{{ appInfo?.appName || '应用生成' }}</span>
+        <a-tag v-if="appInfo?.codeGenType" :color="codeGenTypeTagColor" class="codegen-type-tag">
+          {{ codeGenTypeLabel }}
+        </a-tag>
       </div>
       <div class="topbar-right">
-        <a-button
-          type="default"
-          class="edit-btn"
-          style="margin-right: 8px"
-          @click="router.push(`/app/edit/${appId}`)"
+        <a-tooltip
+          :title="
+            !previewUrl
+              ? '生成网站后可使用可视化编辑'
+              : isEditMode
+                ? '退出编辑模式'
+                : '可视化编辑（点击预览中的元素进行编辑）'
+          "
         >
-          <template #icon><EditOutlined /></template>
-          编辑
-        </a-button>
+          <a-button
+            :type="isEditMode ? 'primary' : 'default'"
+            class="edit-btn"
+            :class="{ 'visual-edit-active': isEditMode }"
+            style="margin-right: 8px"
+            :disabled="!previewUrl"
+            @click="toggleEditMode"
+          >
+            <template #icon><AimOutlined /></template>
+            编辑页面
+          </a-button>
+        </a-tooltip>
         <a-button v-if="deployUrl" type="link" :href="deployUrl" target="_blank">
           <template #icon><LinkOutlined /></template>
           访问链接
@@ -43,7 +58,7 @@
     <div class="chat-body">
       <!-- 左侧对话区域 -->
       <div class="chat-left">
-        <div class="messages-area" ref="messagesRef" @click="handleMessagesAreaClick">
+        <div class="messages-area" ref="messagesRef">
           <!-- 加载更多 -->
           <div v-if="hasMore" class="load-more-wrapper">
             <a-button type="link" :loading="loadingHistory" @click="loadHistory(false)">
@@ -65,7 +80,10 @@
               </a-avatar>
             </div>
             <div class="message-content">
-              <div class="message-bubble" v-html="renderMarkdown(msg.content)"></div>
+              <div
+                class="message-bubble"
+                v-html="msg.role === 'user' ? renderUserMessage(msg.content) : renderAiMessage(msg.content)"
+              ></div>
             </div>
           </div>
           <!-- AI 正在生成提示 -->
@@ -87,7 +105,39 @@
 
         <!-- 输入区域 -->
         <div class="chat-input-area">
+          <!-- 选中元素信息提示 -->
+          <div v-if="selectedElement" class="selected-element-card">
+            <div class="selected-element-card-header">
+              <span class="selected-element-card-title">
+                <AimOutlined style="margin-right: 6px; color: #4299e1" />
+                已选中元素
+              </span>
+              <a-button type="text" size="small" class="selected-element-close" @click="clearSelection">
+                <template #icon><CloseOutlined /></template>
+              </a-button>
+            </div>
+            <div class="selected-element-card-body">
+              <div v-if="selectedElement.pagePath" class="selected-element-row">
+                <span class="selected-element-label">页面路径</span>
+                <code class="selected-element-value">{{ selectedElement.pagePath }}</code>
+              </div>
+              <div class="selected-element-row">
+                <span class="selected-element-label">标签</span>
+                <code class="selected-element-value">&lt;{{ selectedElement.tagName }}&gt;</code>
+              </div>
+              <div class="selected-element-row">
+                <span class="selected-element-label">选择器</span>
+                <code class="selected-element-value">{{ selectedElement.selector }}</code>
+              </div>
+              <div v-if="selectedElement.textContent" class="selected-element-row">
+                <span class="selected-element-label">当前内容</span>
+                <span class="selected-element-text">{{ selectedElement.textContent.substring(0, 100) }}</span>
+              </div>
+            </div>
+          </div>
+
           <div class="chat-input-wrapper">
+
             <a-textarea
               v-model:value="userInput"
               placeholder="输入消息继续对话..."
@@ -121,9 +171,11 @@
         <div class="preview-body">
           <iframe
             v-if="previewUrl"
+            ref="iframeRef"
             :src="previewUrl"
             class="preview-iframe"
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+            @load="handleIframeLoad"
           ></iframe>
           <div v-else class="preview-empty">
             <div class="preview-empty-icon">
@@ -153,7 +205,10 @@ import {
   EditOutlined,
   UpOutlined,
   DownloadOutlined,
+  AimOutlined,
+  CloseOutlined,
 } from '@ant-design/icons-vue'
+import { useVisualEditor } from '@/composables/useVisualEditor'
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github.css' // Github style for code block
@@ -176,9 +231,37 @@ const userInput = ref('')
 const isStreaming = ref(false)
 const isGenerating = ref(false)
 const messagesRef = ref<HTMLElement>()
+const iframeRef = ref<HTMLIFrameElement>()
+
+const {
+  isEditMode,
+  selectedElement,
+  toggleEditMode,
+  exitEditMode,
+  clearSelection,
+  handleIframeLoad,
+} = useVisualEditor(iframeRef)
 
 const userStore = useUserStore()
 const loginUser = computed(() => userStore.loginUser)
+
+const CODE_GEN_TYPE_MAP: Record<string, { label: string; color: string }> = {
+  html: { label: '原生 HTML', color: 'orange' },
+  multi_file: { label: '多文件', color: 'blue' },
+  vue_project: { label: 'Vue 工程', color: 'green' },
+}
+
+const codeGenTypeLabel = computed(() => {
+  const type = appInfo.value?.codeGenType
+  if (!type) return ''
+  return CODE_GEN_TYPE_MAP[type]?.label || type
+})
+
+const codeGenTypeTagColor = computed(() => {
+  const type = appInfo.value?.codeGenType
+  if (!type) return 'default'
+  return CODE_GEN_TYPE_MAP[type]?.color || 'default'
+})
 
 interface ChatMessage {
   id?: string
@@ -268,6 +351,7 @@ const md = new MarkdownIt({
   html: true,
   linkify: true,
   typographer: true,
+  breaks: true,
 })
 md.options.highlight = function (str: string, lang: string): string {
   if (lang && hljs.getLanguage(lang)) {
@@ -309,13 +393,11 @@ md.renderer.rules.fence = (tokens, idx, options) => {
   const fileLabel = filePath
     ? `<span class="code-file-name">${md.utils.escapeHtml(filePath)}</span>`
     : '<span class="code-file-name">源码片段</span>'
-  const buttonLabel = filePath ? '复制文件' : '复制代码'
 
   return `
     <div class="code-file-card">
       <div class="code-file-toolbar">
         ${fileLabel}
-        <button type="button" class="code-copy-btn" data-file-path="${md.utils.escapeHtml(filePath)}">${buttonLabel}</button>
       </div>
       ${highlighted}
     </div>
@@ -327,43 +409,41 @@ const renderMarkdown = (text: string) => {
   return md.render(text)
 }
 
-const copyText = async (text: string) => {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text)
-    return
-  }
-  const textarea = document.createElement('textarea')
-  textarea.value = text
-  textarea.style.position = 'fixed'
-  textarea.style.opacity = '0'
-  document.body.appendChild(textarea)
-  textarea.focus()
-  textarea.select()
-  document.execCommand('copy')
-  document.body.removeChild(textarea)
+/** 用户消息：转义 HTML，换行转 <br>，保留原始格式 */
+const renderUserMessage = (text: string) => {
+  if (!text) return ''
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+    .replace(/\n/g, '<br>')
 }
 
-const handleMessagesAreaClick = async (event: MouseEvent) => {
-  const target = event.target as HTMLElement | null
-  const copyButton = target?.closest('.code-copy-btn') as HTMLButtonElement | null
-  if (!copyButton) {
-    return
+/**
+ * AI 消息渲染：
+ * - 含代码块时走完整 markdown
+ * - 纯文本时也转义 + 换行转 <br>，确保换行正常显示
+ */
+const renderAiMessage = (text: string) => {
+  if (!text) return ''
+  if (text.includes('```')) {
+    return md.render(text)
   }
-  const card = copyButton.closest('.code-file-card')
-  const codeElement = card?.querySelector('code')
-  const codeText = codeElement?.textContent || ''
-  if (!codeText) {
-    message.error('未找到可复制的源码内容')
-    return
-  }
-  const filePath = copyButton.dataset.filePath || ''
-  try {
-    await copyText(codeText)
-    message.success(filePath ? `已复制 ${filePath}` : '源码已复制')
-  } catch {
-    message.error('复制失败，请手动复制')
-  }
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\n/g, '<br>')
 }
+
+
 
 // 加载历史消息
 const loadHistory = async (firstLoad = false) => {
@@ -546,11 +626,29 @@ const handleSendMessage = async () => {
   const text = userInput.value.trim()
   if (!text || isStreaming.value) return
 
-  messages.value.push({ role: 'user', content: text })
+  // 若有选中元素，将元素信息拼入提示词
+  let prompt = text
+  if (selectedElement.value) {
+    const el = selectedElement.value
+    let elementContext = `\n\n选中元素信息：`
+    if (el.pagePath) {
+      elementContext += `\n- 页面路径: ${el.pagePath}`
+    }
+    elementContext += `\n- 标签: ${el.tagName.toLowerCase()}\n- 选择器: ${el.selector}`
+    if (el.textContent) {
+      elementContext += `\n- 当前内容: ${el.textContent.substring(0, 100)}`
+    }
+    prompt = text + elementContext
+  }
+
+  messages.value.push({ role: 'user', content: prompt })
   userInput.value = ''
   scrollToBottom()
 
-  await sendChatMessage(text)
+  // 发送后清除选中状态并退出编辑模式
+  exitEditMode()
+
+  await sendChatMessage(prompt)
 }
 
 // 从 Content-Disposition 响应头中解析文件名
@@ -688,6 +786,12 @@ onMounted(async () => {
   color: #1a1a2e;
 }
 
+.codegen-type-tag {
+  margin-left: 4px;
+  margin-right: 0;
+  font-weight: 500;
+}
+
 .topbar-right {
   display: flex;
   align-items: center;
@@ -793,7 +897,7 @@ onMounted(async () => {
 
 .message-bubble :deep(.code-file-toolbar) {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
@@ -806,22 +910,6 @@ onMounted(async () => {
   font-size: 12px;
   font-weight: 600;
   word-break: break-all;
-}
-
-.message-bubble :deep(.code-copy-btn) {
-  border: none;
-  border-radius: 8px;
-  padding: 6px 10px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #fff;
-  background: linear-gradient(135deg, #38b2ac, #4299e1);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.message-bubble :deep(.code-copy-btn:hover) {
-  background: linear-gradient(135deg, #2c9e97, #3182ce);
 }
 
 .message-bubble :deep(.code-file-card pre) {
@@ -904,6 +992,87 @@ onMounted(async () => {
 
 .chat-send-btn:hover {
   background: linear-gradient(135deg, #2c9e97, #3182ce);
+}
+
+.chat-visual-edit-btn {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-color: #d9d9d9;
+}
+
+.chat-visual-edit-btn.visual-edit-active {
+  background: linear-gradient(135deg, #38b2ac, #4299e1);
+  border: none;
+}
+
+.selected-element-card {
+  margin-bottom: 8px;
+  border: 1px solid #bae0ff;
+  border-radius: 10px;
+  background: #f0f8ff;
+  overflow: hidden;
+  font-size: 13px;
+}
+
+.selected-element-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  background: #e6f4ff;
+  border-bottom: 1px solid #bae0ff;
+}
+
+.selected-element-card-title {
+  font-weight: 600;
+  color: #1677ff;
+  font-size: 13px;
+}
+
+.selected-element-close {
+  color: #888;
+  padding: 0;
+  height: 22px;
+  width: 22px;
+  min-width: unset;
+}
+
+.selected-element-card-body {
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.selected-element-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  line-height: 1.6;
+}
+
+.selected-element-label {
+  flex-shrink: 0;
+  width: 60px;
+  color: #888;
+  font-size: 12px;
+}
+
+.selected-element-value {
+  font-family: monospace;
+  font-size: 12px;
+  background: rgba(66, 153, 225, 0.1);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: #2b6cb0;
+  word-break: break-all;
+}
+
+.selected-element-text {
+  font-size: 12px;
+  color: #444;
+  word-break: break-all;
 }
 
 /* 右侧预览区域 */

@@ -19,23 +19,23 @@
           <a-form-item label="应用ID">
             <span>{{ formState.id }}</span>
           </a-form-item>
+          <a-form-item label="生成类型">
+            <a-tag v-if="codeGenType" :color="codeGenTypeTagColor">
+              {{ codeGenTypeLabel }}
+            </a-tag>
+            <span v-else style="color: #999">未生成</span>
+          </a-form-item>
           <a-form-item
             label="应用名称"
             name="appName"
             :rules="[{ required: true, message: '请输入应用名称' }]"
           >
-            <a-input
-              v-model:value="formState.appName"
-              placeholder="请输入应用名称"
-            />
+            <a-input v-model:value="formState.appName" placeholder="请输入应用名称" />
           </a-form-item>
           <!-- 管理员可以编辑封面和优先级 -->
           <template v-if="isAdmin">
             <a-form-item label="封面URL" name="cover">
-              <a-input
-                v-model:value="formState.cover"
-                placeholder="请输入封面图片URL"
-              />
+              <a-input v-model:value="formState.cover" placeholder="请输入封面图片URL" />
             </a-form-item>
             <a-form-item v-if="formState.cover" label="封面预览">
               <img
@@ -89,6 +89,26 @@ const formState = reactive<API.AppUpdateRequest>({
   priority: 0,
 })
 
+const codeGenType = ref<string | undefined>()
+
+const CODE_GEN_TYPE_MAP: Record<string, { label: string; color: string }> = {
+  html: { label: '原生 HTML', color: 'orange' },
+  multi_file: { label: '多文件', color: 'blue' },
+  vue_project: { label: 'Vue 工程', color: 'green' },
+}
+
+const codeGenTypeLabel = computed(() => {
+  const type = codeGenType.value
+  if (!type) return ''
+  return CODE_GEN_TYPE_MAP[type]?.label || type
+})
+
+const codeGenTypeTagColor = computed(() => {
+  const type = codeGenType.value
+  if (!type) return 'default'
+  return CODE_GEN_TYPE_MAP[type]?.color || 'default'
+})
+
 const loadAppInfo = async () => {
   loading.value = true
   try {
@@ -98,6 +118,7 @@ const loadAppInfo = async () => {
       formState.appName = app.appName || ''
       formState.cover = app.cover || ''
       formState.priority = app.priority || 0
+      codeGenType.value = app.codeGenType
     } else {
       message.error('应用不存在')
       router.back()
