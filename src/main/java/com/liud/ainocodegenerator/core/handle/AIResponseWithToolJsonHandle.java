@@ -1,9 +1,10 @@
 package com.liud.ainocodegenerator.core.handle;
 
-import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
+import com.liud.ainocodegenerator.ai.tools.BaseTool;
+import com.liud.ainocodegenerator.ai.tools.ToolManager;
 import com.liud.ainocodegenerator.constant.AppConstant;
 import com.liud.ainocodegenerator.core.builder.VueProjectBuilder;
 import com.liud.ainocodegenerator.core.diagnostics.ToolArgumentsDiagnostics;
@@ -31,6 +32,8 @@ public class AIResponseWithToolJsonHandle {
     private ChatHistoryService chatHistoryService;
     @Resource
     private VueProjectBuilder vueProjectBuilder;
+    @Resource
+    private ToolManager toolManager;
 
     public Flux<String> handle(Flux<String> orgFlux, Long appId, User loginUser) {
         StringBuilder aiMessageBuilder = new StringBuilder();
@@ -70,11 +73,12 @@ public class AIResponseWithToolJsonHandle {
                                 name,
                                 toolRequestMessage.getId(),
                                 ToolArgumentsDiagnostics.summarizeArgumentObject(argumentObj));
-                        if ("writeFileChunk".equals(name)) {
-                            bufferChunkContent(chunkContentMap, argumentObj);
-                            return "";
+                        BaseTool tool = toolManager.getTool(name);
+                        if (tool == null) {
+                            log.warn("未找到工具定义, appId: {}, tool: {}, requestId: {}", appId, name, toolRequestMessage.getId());
+                            return buildFallbackToolRequestOutput(name);
                         }
-                        return "";
+                        return StrUtil.nullToDefault(tool.handleToolRequest(argumentObj, chunkContentMap), "");
                     }
 
                     ToolExecutedMessage toolExecutedMessage = JSONUtil.toBean(chunk, ToolExecutedMessage.class);
@@ -94,7 +98,10 @@ public class AIResponseWithToolJsonHandle {
                         aiMessageBuilder.append(resultInfo);
                         return resultInfo;
                     }
-                    String output = buildToolExecutedOutput(toolName, result, argumentObj, chunkContentMap);
+                    BaseTool tool = toolManager.getTool(toolName);
+                    String output = tool == null
+                            ? buildFallbackToolExecutedOutput(toolName, result)
+                            : StrUtil.nullToDefault(tool.handleToolExecuted(result, argumentObj, chunkContentMap), "");
                     aiMessageBuilder.append(output);
                     return output;
                 })
@@ -141,61 +148,12 @@ public class AIResponseWithToolJsonHandle {
         return false;
     }
 
-    private void bufferChunkContent(Map<String, StringBuilder> chunkContentMap, JSONObject argumentObj) {
-        String relativeFilePath = argumentObj.getStr("relativeFilePath");
-        String chunkContent = argumentObj.getStr("chunkContent", "");
-        Integer chunkIndex = argumentObj.getInt("chunkIndex", 0);
-        if (StrUtil.isBlank(relativeFilePath)) {
-            return;
-        }
-        if (chunkIndex != null && chunkIndex == 0) {
-            chunkContentMap.put(relativeFilePath, new StringBuilder(chunkContent));
-            return;
-        }
-        chunkContentMap.computeIfAbsent(relativeFilePath, key -> new StringBuilder()).append(chunkContent);
+    private String buildFallbackToolRequestOutput(String toolName) {
+        return "\n\n[选择工具] " + toolName + "\n\n";
     }
 
-    private String buildToolExecutedOutput(String toolName,
-                                           String result,
-                                           JSONObject argumentObj,
-                                           Map<String, StringBuilder> chunkContentMap) {
-        if ("writeFileChunk".equals(toolName)) {
-            String relativeFilePath = argumentObj.getStr("relativeFilePath");
-            Boolean lastChunk = argumentObj.getBool("lastChunk");
-            if (Boolean.TRUE.equals(lastChunk) && isToolExecutionSuccess(result)) {
-                StringBuilder fileContentBuilder = chunkContentMap.remove(relativeFilePath);
-                String fullContent = fileContentBuilder == null ? argumentObj.getStr("chunkContent", "") : fileContentBuilder.toString();
-                return formatFileCodeOutput(relativeFilePath, fullContent);
-            }
-            if (!isToolExecutionSuccess(result)) {
-                return "\n\n[工具-" + toolName + "-执行结果] => " + result + "\n\n";
-            }
-            return "";
-        }
-        if ("writeFile".equals(toolName) && isToolExecutionSuccess(result)) {
-            String relativeFilePath = argumentObj.getStr("relativeFilePath");
-            String content = argumentObj.getStr("content", "");
-            return formatFileCodeOutput(relativeFilePath, content);
-        }
+    private String buildFallbackToolExecutedOutput(String toolName, String result) {
+        log.warn("未找到工具定义, tool: {}, 使用兜底执行结果输出", toolName);
         return "\n\n[工具-" + toolName + "-执行结果] => " + result + "\n\n";
-    }
-
-    private boolean isToolExecutionSuccess(String result) {
-        return StrUtil.isNotBlank(result) && !result.contains("失败");
-    }
-
-    private String formatFileCodeOutput(String relativeFilePath, String content) {
-        String suffix = FileUtil.getSuffix(relativeFilePath);
-        String lang = StrUtil.blankToDefault(suffix, "text");
-        return String.format("""
-
-
-[源码文件] %s
-````%s file=%s
-%s
-````
-
-
-""", relativeFilePath, lang, relativeFilePath, content);
     }
 }

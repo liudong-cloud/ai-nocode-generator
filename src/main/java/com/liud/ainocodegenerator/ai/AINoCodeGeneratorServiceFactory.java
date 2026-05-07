@@ -2,7 +2,7 @@ package com.liud.ainocodegenerator.ai;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
-import com.liud.ainocodegenerator.ai.tools.FileWriteTool;
+import com.liud.ainocodegenerator.ai.tools.*;
 import com.liud.ainocodegenerator.model.enums.CodeGenTypeEnum;
 import com.liud.ainocodegenerator.service.ChatHistoryService;
 import dev.langchain4j.community.store.memory.chat.redis.RedisChatMemoryStore;
@@ -34,6 +34,9 @@ public class AINoCodeGeneratorServiceFactory {
 
     @Resource
     private ChatHistoryService chatHistoryService;
+
+    @Resource
+    private ToolManager toolManager;
 
     /**
      * AI 服务实例缓存
@@ -84,7 +87,7 @@ public class AINoCodeGeneratorServiceFactory {
         // 根据
         return switch (codeGenTypeEnum) {
             case VUE_PROJECT -> AiServices.builder(AINoCodeGeneratorService.class)
-                    .tools(new FileWriteTool())
+                    .tools(toolManager.getAllTools())
                     .chatModel(chatModel)
                     .chatMemoryProvider(s -> windowChatMemory)
                     .streamingChatModel(vueProjectStreamingChatModel)

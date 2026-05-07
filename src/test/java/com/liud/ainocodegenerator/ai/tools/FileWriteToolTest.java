@@ -1,5 +1,6 @@
 package com.liud.ainocodegenerator.ai.tools;
 
+import cn.hutool.json.JSONUtil;
 import com.liud.ainocodegenerator.constant.AppConstant;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -8,7 +9,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -79,6 +82,68 @@ class FileWriteToolTest {
         assertEquals("chunk-0", Files.readString(resolvePath(appId, relativePath)));
     }
 
+    @Test
+    void handleToolExecuted_shouldRenderCodeBlockForWriteFileSuccess() {
+        Map<String, StringBuilder> chunkContentMap = new HashMap<>();
+
+        String output = fileWriteTool.handleToolExecuted(
+                "文件写入成功: src/main.js",
+                JSONUtil.createObj()
+                        .set("relativeFilePath", "src/main.js")
+                        .set("content", "console.log('hello chunkless');"),
+                chunkContentMap
+        );
+
+        assertTrue(output.contains("[源码文件] src/main.js"));
+        assertTrue(output.contains("console.log('hello chunkless');"));
+    }
+
+    @Test
+    void handleToolRequestAndExecuted_shouldRenderFinalChunkCodeBlockOnlyOnLastSuccessfulChunk() {
+        Map<String, StringBuilder> chunkContentMap = new HashMap<>();
+
+        String firstRequest = fileWriteTool.handleToolRequest(
+                JSONUtil.createObj()
+                        .set("relativeFilePath", "src/pages/Home.vue")
+                        .set("chunkContent", "<template>\n")
+                        .set("chunkIndex", 0)
+                        .set("lastChunk", false),
+                chunkContentMap
+        );
+        String firstExecuted = fileWriteTool.handleToolExecuted(
+                "分块文件写入成功: src/pages/Home.vue，分块序号=0",
+                JSONUtil.createObj()
+                        .set("relativeFilePath", "src/pages/Home.vue")
+                        .set("chunkContent", "<template>\n")
+                        .set("chunkIndex", 0)
+                        .set("lastChunk", false),
+                chunkContentMap
+        );
+        String finalRequest = fileWriteTool.handleToolRequest(
+                JSONUtil.createObj()
+                        .set("relativeFilePath", "src/pages/Home.vue")
+                        .set("chunkContent", "</template>\n")
+                        .set("chunkIndex", 1)
+                        .set("lastChunk", true),
+                chunkContentMap
+        );
+        String finalExecuted = fileWriteTool.handleToolExecuted(
+                "分块文件写入完成: src/pages/Home.vue，最后分块序号=1",
+                JSONUtil.createObj()
+                        .set("relativeFilePath", "src/pages/Home.vue")
+                        .set("chunkContent", "</template>\n")
+                        .set("chunkIndex", 1)
+                        .set("lastChunk", true),
+                chunkContentMap
+        );
+
+        assertEquals("", firstRequest);
+        assertEquals("", firstExecuted);
+        assertEquals("", finalRequest);
+        assertTrue(finalExecuted.contains("[源码文件] src/pages/Home.vue"));
+        assertTrue(finalExecuted.contains("<template>\n</template>\n"));
+    }
+
     private long registerAppId() {
         long appId = System.nanoTime();
         appIdsToCleanup.add(appId);
@@ -89,4 +154,3 @@ class FileWriteToolTest {
         return Path.of(AppConstant.CODE_OUTPUT_ROOT_DIR, "vue_project_" + appId, relativePath);
     }
 }
-

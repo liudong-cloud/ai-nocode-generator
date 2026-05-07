@@ -41,9 +41,10 @@ public class VueProjectStreamingChatModelConfig {
                 .maxTokens(maxTokens)
                 .logRequests(logRequests)
                 .logResponses(logResponses)
-                .returnThinking(false)
-                .sendThinking(false)
-                .customParameters(Map.of("thinking", Map.of("type", "disabled")))
+//                .returnThinking(false)
+//                .sendThinking(false)
+//                .customParameters(Map.of("thinking", Map.of("type", "disabled")))
+                .customParameters(Map.of("thinking", Map.of("type", "enabled")))
                 .build();
     }
 }

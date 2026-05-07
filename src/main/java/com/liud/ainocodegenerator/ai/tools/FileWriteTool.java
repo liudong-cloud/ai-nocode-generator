@@ -1,11 +1,13 @@
 package com.liud.ainocodegenerator.ai.tools;
 
+import cn.hutool.json.JSONObject;
 import com.liud.ainocodegenerator.constant.AppConstant;
 import com.liud.ainocodegenerator.core.diagnostics.ToolArgumentsDiagnostics;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolMemoryId;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -20,7 +22,8 @@ import java.util.concurrent.ConcurrentMap;
  * 支持 AI 通过工具调用的方式写入文件
  */
 @Slf4j
-public class FileWriteTool {
+@Component
+public class FileWriteTool extends BaseTool {
 
     private static final ConcurrentMap<String, Integer> FILE_CHUNK_INDEX_CACHE = new ConcurrentHashMap<>();
 
@@ -143,5 +146,74 @@ public class FileWriteTool {
     private String buildStateKey(String relativeFilePath, Long appId) {
         return appId + ":" + relativeFilePath;
     }
-}
 
+    // 核心方法不变，此处省略
+
+    @Override
+    public String getToolName() {
+        return "writeFile";
+    }
+
+    @Override
+    public String[] getSupportedToolNames() {
+        return new String[]{"writeFile", "writeFileChunk"};
+    }
+
+    @Override
+    public String getDisplayName() {
+        return "写入文件";
+    }
+
+    @Override
+    public String generateToolExecutedResult(JSONObject arguments) {
+        String relativeFilePath = arguments.getStr("relativeFilePath");
+        String content = arguments.getStr("content");
+        return formatFileCodeOutput(relativeFilePath, content);
+    }
+
+    @Override
+    public String handleToolRequest(JSONObject arguments, java.util.Map<String, StringBuilder> chunkContentMap) {
+        if (isWriteFileChunkRequest(arguments)) {
+            bufferChunkContent(chunkContentMap, arguments);
+            return "";
+        }
+        return super.handleToolRequest(arguments, chunkContentMap);
+    }
+
+    @Override
+    public String handleToolExecuted(String result, JSONObject arguments, java.util.Map<String, StringBuilder> chunkContentMap) {
+        if (isWriteFileChunkRequest(arguments)) {
+            String relativeFilePath = arguments.getStr("relativeFilePath");
+            Boolean lastChunk = arguments.getBool("lastChunk");
+            if (Boolean.TRUE.equals(lastChunk) && isToolExecutionSuccess(result)) {
+                StringBuilder fileContentBuilder = chunkContentMap.remove(relativeFilePath);
+                String fullContent = fileContentBuilder == null ? arguments.getStr("chunkContent", "") : fileContentBuilder.toString();
+                return formatFileCodeOutput(relativeFilePath, fullContent);
+            }
+            if (!isToolExecutionSuccess(result)) {
+                return formatGenericToolExecutedOutput("writeFileChunk", result);
+            }
+            return "";
+        }
+        return super.handleToolExecuted(result, arguments, chunkContentMap);
+    }
+
+    private boolean isWriteFileChunkRequest(JSONObject arguments) {
+        return arguments.containsKey("chunkContent") || arguments.containsKey("chunkIndex") || arguments.containsKey("lastChunk");
+    }
+
+    private void bufferChunkContent(java.util.Map<String, StringBuilder> chunkContentMap, JSONObject argumentObj) {
+        String relativeFilePath = argumentObj.getStr("relativeFilePath");
+        String chunkContent = argumentObj.getStr("chunkContent", "");
+        Integer chunkIndex = argumentObj.getInt("chunkIndex", 0);
+        if (relativeFilePath == null || relativeFilePath.isBlank()) {
+            return;
+        }
+        if (chunkIndex != null && chunkIndex == 0) {
+            chunkContentMap.put(relativeFilePath, new StringBuilder(chunkContent));
+            return;
+        }
+        chunkContentMap.computeIfAbsent(relativeFilePath, key -> new StringBuilder()).append(chunkContent);
+    }
+
+}
