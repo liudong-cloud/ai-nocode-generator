@@ -37,3 +37,9 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# AI 协作规范文件（由 pulse rules init 生成，个人本地配置）
+/CLAUDE.md
+/AGENTS.md
+.github/copilot-instructions.md
+.cursor/rules/pulse.mdc
